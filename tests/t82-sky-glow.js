@@ -1,0 +1,33 @@
+// t82 — Sky glow (the aurora above the walls): off / built-in / my colour + brightness, saved into the bake
+const { chromium } = require('playwright'); const fs=require('fs'), path=require('path');
+const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const p=await ctx.newPage();
+  const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=event'); await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(1200);
+  const d0=await p.evaluate(()=>({vis:window.HEX.aurora.visible, solo:window.HEX.AUR.solo.value, bri:window.HEX.AUR.bri.value}));
+  check(d0.vis&&d0.solo===0&&d0.bri===1,'default: glow on, built-in colours, full brightness (unchanged look)');
+  await p.evaluate(()=>{ const h=[...document.querySelectorAll('#stg .stsec>h4')].find(x=>x.textContent.indexOf('Vibe')>=0); if(h.parentNode.classList.contains('closed')) h.click(); });
+  const seg=(lab,v)=>p.evaluate(([lab,v])=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent===lab&&[...x.querySelectorAll('button')].some(y=>y.textContent===v)); [...f.querySelectorAll('button')].find(x=>x.textContent===v).click(); },[lab,v]);
+  await seg('Glow','off'); await p.waitForTimeout(300);
+  check(await p.evaluate(()=>!window.HEX.aurora.visible),'Glow off hides it');
+  await seg('Glow','on'); await p.waitForTimeout(300); await seg('Colour','my colour'); await p.waitForTimeout(300);
+  await p.evaluate(()=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent==='Pick'); const i=f.querySelector('input'); i.value='#ff2a6d'; i.dispatchEvent(new Event('input'));
+    const g=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent==='Brightness'&&x.parentNode.querySelector('.stsub')); });
+  await p.evaluate(()=>{ const all=[...document.querySelectorAll('#stg .stf')]; const k=all.findIndex(x=>(x.querySelector('label')||{}).textContent==='Pick'); const f=all.slice(k).find(x=>(x.querySelector('label')||{}).textContent==='Brightness'); const i=f.querySelector('input'); i.value=1.6; i.dispatchEvent(new Event('input')); });
+  await p.waitForTimeout(400);
+  const d1=await p.evaluate(()=>({vis:window.HEX.aurora.visible, solo:window.HEX.AUR.solo.value, c:'#'+window.HEX.AUR.sc.value.getHexString(), bri:window.HEX.AUR.bri.value}));
+  check(d1.vis&&d1.solo===1&&d1.c==='#ff2a6d'&&Math.abs(d1.bri-1.6)<.01,'my colour + brightness reach the glow ('+d1.c+', '+d1.bri+')');
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); window.HEX.setYaw(0); }); await p.waitForTimeout(500);
+  await p.screenshot({path:'shots/t82-pink-glow.png'});
+  await p.evaluate(()=>document.getElementById('stg').classList.add('open'));
+  const [dl]=await Promise.all([p.waitForEvent('download'),p.evaluate(()=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()==='bake .html').click())]);
+  const bp=path.join(__dirname,'..','out','t82.html'); await dl.saveAs(bp);
+  const q=await b.newPage({viewport:{width:390,height:844}}); const e2=[]; q.on('pageerror',x=>e2.push(String(x)));
+  await q.goto('http://127.0.0.1:8765/out/t82.html'); await q.waitForFunction(()=>window.HEX&&window.HEX.ok); await q.waitForTimeout(1500);
+  const d2=await q.evaluate(()=>({vis:window.HEX.aurora.visible, solo:window.HEX.AUR.solo.value, c:'#'+window.HEX.AUR.sc.value.getHexString(), bri:window.HEX.AUR.bri.value}));
+  check(d2.vis&&d2.solo===1&&d2.c==='#ff2a6d'&&Math.abs(d2.bri-1.6)<.01,'the published room carries the glow setting');
+  check(e2.length===0&&errs.length===0,'no errors'+(e2[0]||errs[0]?': '+(e2[0]||errs[0]):''));
+  await b.close(); ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(`\n${ok.length}/${ok.length+bad.length}`);
+})();

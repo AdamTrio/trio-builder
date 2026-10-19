@@ -1,0 +1,11 @@
+const { chromium } = require('playwright'); const path=require('path'); const A=f=>path.join(__dirname,'..','setassets',f);
+(async()=>{ const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+ const p=await (await b.newContext({viewport:{width:1280,height:800}})).newPage(); const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+ await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=room'); await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(1000);
+ const btn=t=>p.evaluate(t=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()===t).click(),t);
+ await p.evaluate(()=>[...document.querySelectorAll('#stg .stsec>h4')].find(x=>x.textContent.indexOf('Windows & sets')>=0).click());
+ await btn('+ new set'); await p.waitForTimeout(500);
+ const [fc]=await Promise.all([p.waitForEvent('filechooser'),btn('+ model (.glb)')]); await fc.setFiles(A('model.glb')); await p.waitForTimeout(2500);
+ const kinds=()=>p.evaluate(()=>{ const g=window.HEX.scene.children.find(o=>o.userData.isSet&&o.position.y<-100); const s=new Set(); g.traverse(o=>{ if(o.isMesh&&o.userData.isProp&&o.material) s.add(o.material.type); }); return [...s]; });
+ const k1=await kinds(); await btn('unlit · as made'); await p.waitForTimeout(2500); const k2=await kinds();
+ console.log(JSON.stringify({lit:k1,unlit:k2,errs})); await b.close(); })();

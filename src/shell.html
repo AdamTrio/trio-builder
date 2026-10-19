@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>{{TRIO:TITLE}}</title>
+<meta property="og:title" content="DEATH BY ROMY Event Night — live on Trio">
+<meta property="og:description" content="Tap in. Play the game. Climb the board. Music on.">
+<meta name="theme-color" content="#07060d">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{ --ink:#f5f2ff; --dim:#8f87b8; --gold:#fbbf24; --purp:#8b7bff; --teal:#2dd4bf; }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;background:#07060d;color:var(--ink);font-family:'Manrope',sans-serif;
+    overscroll-behavior:none;touch-action:none}
+  #gl{position:fixed;inset:0;display:block;width:100%!important;height:100%!important}
+
+  /* ---------- splash / enter ---------- */
+  #splash{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;background:radial-gradient(120% 100% at 50% 110%, #150d3d, #07060d 70%)}
+  #splash .k{font:800 10px 'Manrope';letter-spacing:.32em;text-transform:uppercase;color:var(--purp)}
+  #splash h1{font-family:'Anton';font-size:44px;letter-spacing:.03em;text-transform:uppercase;text-align:center;line-height:1.05}
+  #splash{gap:10px}
+  #slogo{margin-bottom:6px}
+  #splash h1.evt{font-size:clamp(22px,3.4vw,34px);letter-spacing:.06em}
+  #splash h1.evt b{color:#c9bfff;text-shadow:0 0 26px rgba(139,123,255,.85)}
+  #splash h1 b{color:#c9bfff;text-shadow:0 0 30px rgba(139,123,255,.9)}
+  #splash .s{font:700 12px 'Manrope';color:var(--dim);letter-spacing:.06em}
+  #enter{margin-top:16px;font:800 13px 'Manrope';letter-spacing:.22em;text-transform:uppercase;color:#fff;
+    background:linear-gradient(120deg,#a08fff,#6d5ae0);border-radius:999px;padding:16px 40px;border:0;
+    box-shadow:0 8px 30px rgba(139,123,255,.55), 0 0 70px rgba(139,123,255,.35);cursor:pointer}
+  #splash.gone{opacity:0;pointer-events:none;transition:opacity .8s}
+
+  /* ---------- HUD chrome ---------- */
+  .chip{position:fixed;top:calc(12px + env(safe-area-inset-top));left:14px;z-index:40;display:flex;align-items:center;gap:9px;
+    background:rgba(7,6,13,.78);border:1px solid rgba(251,191,36,.5);border-radius:999px;padding:8px 15px;backdrop-filter:blur(6px)}
+  .chip .live{width:8px;height:8px;border-radius:50%;background:#ff3b30;box-shadow:0 0 10px #ff3b30;animation:pu 1.4s infinite}
+  @keyframes pu{50%{opacity:.35}}
+  .chip b{font:800 10.5px 'Manrope';letter-spacing:.18em;text-transform:uppercase}
+  .chip s{text-decoration:none;font:700 10px 'Manrope';color:var(--dim)}
+  #timer{position:fixed;top:calc(12px + env(safe-area-inset-top));right:14px;z-index:40;font:800 10.5px 'Manrope';
+    letter-spacing:.16em;color:var(--gold);background:rgba(7,6,13,.78);border:1px solid rgba(139,123,255,.4);
+    border-radius:999px;padding:9px 15px;backdrop-filter:blur(6px)}
+  #mute{position:fixed;top:calc(58px + env(safe-area-inset-top));right:14px;z-index:40;
+    width:42px;height:42px;border-radius:50%;font-size:17px;cursor:pointer;
+    border:1px solid rgba(139,123,255,.5);background:rgba(7,6,13,.78);backdrop-filter:blur(6px);
+    display:grid;place-items:center;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+  #mute.off{border-color:rgba(255,84,112,.6)}
+  #spinhint{position:fixed;top:calc(60px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:38;
+    font:800 9px 'Manrope';letter-spacing:.3em;text-transform:uppercase;color:var(--dim);opacity:.85;transition:opacity 1s}
+  #spinhint.gone{opacity:0}
+
+  /* ---------- the game wall DOM panel (projected onto the 3D wall) ---------- */
+  #gwall{position:fixed;z-index:30;transform:translate(-50%,-50%);width:340px;transition:opacity .25s;
+    display:flex;flex-direction:column;gap:10px;pointer-events:none;cursor:pointer}
+  #gwall.on{pointer-events:auto}
+  /* docked: pinned to the wall — the whole panel is one tap target, PLAY sleeps */
+  #gwall.docked #play{pointer-events:none}
+  #tapme{align-self:center;font:800 9px 'Manrope';letter-spacing:.22em;text-transform:uppercase;color:#07060d;
+    background:linear-gradient(120deg,#fde68a,#fbbf24);border-radius:999px;padding:8px 16px;white-space:nowrap;
+    box-shadow:0 5px 18px rgba(251,191,36,.5), 0 0 0 5px rgba(251,191,36,.14);animation:brt 2.2s infinite}
+  @keyframes brt{50%{box-shadow:0 5px 18px rgba(251,191,36,.5), 0 0 0 12px rgba(251,191,36,0)}}
+  #gwall:not(.docked) #tapme{display:none}
+  #gwall .game{border-radius:14px;position:relative;overflow:hidden;padding:74px 14px 16px;min-height:186px;
+    background:#0a0816;background-size:cover;background-position:center top;
+    border:1px solid rgba(139,123,255,.6);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;
+    box-shadow:0 14px 44px rgba(0,0,0,.55)}
+  #gwall .game .sh{position:absolute;inset:0;background:linear-gradient(rgba(7,6,13,0) 30%, rgba(7,6,13,.82) 78%)}
+  #gwall .game>*{position:relative}
+  #gwall .game .g{font:800 9px 'Manrope';letter-spacing:.3em;text-transform:uppercase;color:#ffd76a}
+  #gwall .game .t{font-family:'Anton';font-size:27px;letter-spacing:.04em;text-transform:uppercase}
+  #play{font:800 12px 'Manrope';letter-spacing:.2em;text-transform:uppercase;color:#07060d;
+    background:linear-gradient(120deg,#fde68a,#fbbf24);border-radius:999px;padding:13px 30px;border:0;cursor:pointer;
+    box-shadow:0 6px 22px rgba(251,191,36,.5), 0 0 40px rgba(251,191,36,.3)}
+  #board{border-radius:14px;background:rgba(7,6,13,.8);border:1px solid rgba(139,123,255,.45);
+    padding:12px 14px;backdrop-filter:blur(6px);box-shadow:0 14px 44px rgba(0,0,0,.55)}
+  #board .bk{font:800 8.5px 'Manrope';letter-spacing:.3em;text-transform:uppercase;color:var(--teal);display:flex;justify-content:space-between}
+  #board .bk s{text-decoration:none;color:#ff5470}
+  #board .bk s.done{color:var(--gold)}
+  .brow{display:flex;align-items:center;gap:9px;margin-top:8px;font:700 12px 'Manrope'}
+  .brow .rk{width:16px;color:var(--dim);font-weight:800;font-size:10px}
+  .brow .av{width:23px;height:23px;border-radius:50%;background:linear-gradient(120deg,#8b7bff,#5b4bd4);
+    display:grid;place-items:center;font:800 9px 'Manrope';color:#fff;flex:none}
+  .brow.b1 .av{background:linear-gradient(120deg,#fde68a,#c9840a);color:#07060d}
+  .brow.you{color:var(--gold)}
+  .brow .sc{margin-left:auto;font-weight:800;font-size:10.5px;color:#c9bfff}
+
+  /* ---------- reaction feed (v37) — a column up the right side, newest at the bottom, old ones fade out the top ---------- */
+  #rail{position:fixed;right:14px;left:auto;bottom:calc(14px + env(safe-area-inset-bottom));z-index:47;width:300px;
+    display:flex;flex-direction:column;align-items:flex-end;gap:10px;pointer-events:none}
+  #rail>*{pointer-events:auto}
+  #thread{width:100%;pointer-events:none}
+  #thread .tk{display:none}
+  #tl{display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;gap:6px;max-height:min(300px,34vh);overflow:hidden;
+    -webkit-mask-image:linear-gradient(transparent,#000 28%);mask-image:linear-gradient(transparent,#000 28%)}
+  #tl .m{max-width:100%;box-sizing:border-box;padding:7px 12px;border-radius:15px;background:rgba(12,10,30,.74);border:1px solid rgba(139,123,255,.32);
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);font:700 12px 'Manrope';color:#e9e4ff;line-height:1.35;animation:tlin .28s ease-out}
+  #tl .m b{color:#c4b8ff;letter-spacing:.04em}
+  #tl .m.me{border-color:rgba(45,212,191,.6)} #tl .m.me b{color:var(--teal)}
+  #tl .m.sys{background:none;border:0;-webkit-backdrop-filter:none;backdrop-filter:none;padding:2px 4px;max-width:240px;text-align:right;
+    font:800 10px 'Manrope';letter-spacing:.06em;color:var(--gold);text-shadow:0 1px 8px rgba(0,0,0,.9)} #tl .m.sys b{color:#fff}
+  @keyframes tlin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  #reacts{display:flex;gap:8px;flex:none;align-items:center}
+  #reacts #pcount{text-decoration:none;font:800 8px 'Manrope';letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin-right:4px;white-space:nowrap}
+  #reacts button{font-size:17px;width:46px;height:46px;border-radius:50%;border:1px solid rgba(139,123,255,.5);
+    background:rgba(20,14,50,.88);box-shadow:0 4px 14px rgba(0,0,0,.5);cursor:pointer;transition:transform .12s}
+  #reacts button:active{transform:scale(1.25)}
+  @media (max-width:820px){ #rail{width:min(240px,62vw);right:12px} #tl{max-height:24vh} #tl .m{font-size:11px;padding:6px 10px}
+    #reacts{gap:6px} #reacts button{width:40px;height:40px;font-size:15px} }
+
+  /* ---------- game overlay ---------- */
+  #groom{position:fixed;inset:0;z-index:50;background:#07060d;display:none;flex-direction:column}
+  #groom.open{display:flex}
+  #groom .bar{display:flex;align-items:center;justify-content:space-between;
+    padding:calc(8px + env(safe-area-inset-top)) 14px 8px;background:#0b0919;border-bottom:1px solid rgba(139,123,255,.25)}
+  #groom .bar b{font:800 10.5px 'Manrope';letter-spacing:.2em;text-transform:uppercase}
+  #back{font:800 10px 'Manrope';letter-spacing:.16em;text-transform:uppercase;color:#07060d;
+    background:linear-gradient(120deg,#c9bfff,#8b7bff);border-radius:999px;padding:9px 16px;border:0;cursor:pointer}
+  #gframe{flex:1;border:0;width:100%}
+
+  /* ---------- event ended ---------- */
+  #ended{position:fixed;left:50%;top:calc(64px + env(safe-area-inset-top));transform:translateX(-50%);z-index:41;display:none;
+    font:800 10px 'Manrope';letter-spacing:.26em;text-transform:uppercase;color:#07060d;
+    background:linear-gradient(120deg,#fde68a,#fbbf24);border-radius:999px;padding:10px 20px}
+  #trioCta{position:fixed;left:50%;bottom:calc(120px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:41;display:none;
+    font:800 11px 'Manrope';letter-spacing:.2em;text-transform:uppercase;color:#fff;text-decoration:none;
+    background:linear-gradient(120deg,#8b7bff,#5b4bd4);border-radius:999px;padding:14px 28px;
+    box-shadow:0 8px 30px rgba(139,123,255,.5)}
+  body.over #ended, body.over #trioCta{display:block}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="splash">
+  <div class="k">// trio event space</div>
+  <img id="slogo" alt="{{TRIO:SLOGO_ALT}}" style="max-width:min(66vw,470px);width:100%;filter:drop-shadow(0 0 40px rgba(139,123,255,.5))">
+  <h1 class="evt"><b>Event Night</b></h1>
+  <div class="s">play orion attacks · climb the board · music on</div>
+  <button id="enter">Tap to enter</button>
+</div>
+
+<div class="chip" style="display:none" id="evchip"><span class="live"></span><b>Death By Romy</b><s>&nbsp;· orion attacks takeover</s></div>
+<div id="timer" style="display:none">45:00</div>
+<button id="mute" style="display:none" aria-label="Mute music">🔊</button>
+<div id="spinhint" style="display:none">◂ drag to look around ▸</div>
+<div id="ended">event ended — final board</div>
+<a id="trioCta" href="https://triogames-beta.netlify.app" target="_blank" rel="noopener">Step into trio ⚡</a>
+
+<div id="gwall">
+  <div class="game" id="gcard">
+    <span class="sh"></span>
+    <span class="g">tonight's game</span>
+    <button id="play">Play now</button>
+  </div>
+  <div id="board">
+    <div class="bk"><span>event board</span><s id="lv">LIVE</s></div>
+    <div id="rows"></div>
+  </div>
+  <span id="tapme">tap — it comes to you</span>
+</div>
+
+<div id="rail" style="display:none">
+  <div id="thread">
+    <div class="tk"><span>the room · reactions</span></div>
+    <div id="tl"><div class="m">say something with a tap ↓</div></div>
+  </div>
+  <div id="reacts"><s id="pcount">1 player in</s>
+    <button data-r="🔥">🔥</button><button data-r="⚡">⚡</button><button data-r="💀">💀</button><button data-r="🫡">🫡</button>
+  </div>
+</div>
+
+<div id="groom">
+  <div class="bar"><b>Orion Attacks · Death By Romy event</b><button id="back">← back to the room</button></div>
+  <iframe id="gframe" src="about:blank" allow="autoplay; fullscreen; gamepad"></iframe>
+</div>
+
+<audio id="track" src="{{TRIO:SONG}}" loop playsinline></audio>
+
+<script>
+{{TRIO:FILE lib/three.min.js}}</script>
+{{TRIO:BUILDER}}<style data-hexlib>
+{{TRIO:FILE lib/nav.css}}</style>
+<script data-hexlib>
+{{TRIO:FILE lib/gltfloader-classic.js}}</script>
+<script>
+{{TRIO:FILE lib/meshopt-decoder-classic.js}}</script>
+<script data-hexlib>
+{{TRIO:FILE lib/hexcore.js}}</script>
+<script data-hexlib>
+{{TRIO:FILE lib/hexfx.js}}</script>
+<script data-screens>
+{{TRIO:FILE lib/screens.js}}</script>
+<script data-addon="carved">
+{{TRIO:FILE lib/addons/carved.js}}</script>
+<script data-addon="beams">
+{{TRIO:FILE lib/addons/beams.js}}</script>
+<script data-world>
+{{TRIO:FILE lib/world.js}}</script>
+<script data-houses>
+{{TRIO:FILE lib/houses.js}}</script>
+{{TRIO:WKITS}}<script data-waddon="katseye">
+{{TRIO:FILE lib/waddons/katseye.js}}</script>
+<script data-waddon="knockedloose">
+{{TRIO:FILE lib/waddons/knockedloose.js}}</script>
+<script>
+/* ============================================================
+   TRIO EVENT SPACE — "THE HEX" · standalone walled-garden demo
+   Nothing here touches the platform. Door gets cut later.
+   ============================================================ */
+const GAME_URL='https://orion-attacks-triogames.netlify.app/';
+/* DEATH BY ROMY room assets — staged from Adam's folder, baked at assembly */
+const DBR={ w1:'data:image/webp;base64,@@W1@@', w2:'data:image/webp;base64,@@W2@@',
+  w3:'data:image/webp;base64,@@W3@@', floor:'data:image/webp;base64,@@FLOOR@@',
+  banner:'data:image/webp;base64,@@BANNER@@',
+  oacard:'data:image/webp;base64,@@OACARD@@',
+  logo:'data:image/webp;base64,{{TRIO:LOGO}}' };
+const EVENT_MIN=45;
+
+/* ---- staged / baked overrides -------------------------------------------
+   A shipped room with its assets baked in behaves exactly as before: every
+   helper below falls through when window.HEXBAKE is absent and the @@..@@
+   placeholders are resolved. ?stage=1 and baked rooms ride these hooks. */
+const HEXBAKE=(typeof window!=='undefined'&&window.HEXBAKE&&typeof window.HEXBAKE==='object')?window.HEXBAKE:null;
+const isPH=u=>(!u||/@@[A-Z0-9_]+@@/.test(String(u)));
+function slotSrc(id,fallback){
+  if(HEXBAKE&&HEXBAKE.surfaces&&HEXBAKE.surfaces[id]) return HEXBAKE.surfaces[id];
+  return isPH(fallback)?null:fallback;
+}
+const WALLKEY=['w1','w2','w3','w1','w3','w2'];
+/* the room's shape, decided once: a bake says what it is; the public Room builder is
+   always a box; ?space=room asks for one; everything else is the hex */
+const HEXSHAPE=(function(){
+  try{
+    if(HEXBAKE&&HEXBAKE.shape) return HEXBAKE.shape==='box'?'box':'hex';
+    if(window.HEXBUILDER&&window.HEXBUILDER.space==='room') return 'box';
+    const q=new URLSearchParams(location.search).get('space');
+    if(q==='room'||q==='box') return 'box';
+  }catch(e){}
+  return 'hex';
+})();
+
+/* splash logo + game card art (assets baked above) */
+try{ const sl=document.getElementById('slogo'); const lu=slotSrc('logo',HEXSHAPE==='box'?null:DBR.logo);
+  window.HEXLOGO=lu||null;                 /* the built-in, so staging can fall back to it */
+  if(sl){ if(lu) sl.src=lu; else sl.style.display='none'; } }catch(e){}
+try{ const gc=document.getElementById('gcard'); const cu=slotSrc('gamecard',DBR.oacard);
+  window.HEXCARD=cu||null;
+  if(gc&&cu) gc.style.backgroundImage='url('+cu+')'; }catch(e){}
+try{ const au=document.getElementById('track'); const su=slotSrc('song',null);
+  if(au){
+    if(su) au.src=su;
+    else if(HEXSHAPE==='box'||isPH(au.getAttribute('src'))) au.removeAttribute('src');
+    /* hand media a blob: URL rather than a data: one — browsers are far happier.
+       The original is stashed so a bake can write the built-in track back out. */
+    const cur=au.getAttribute('src')||'';
+    if(cur.slice(0,5)==='data:'){
+      window.HEXSONG=cur;
+      if(window.HEXCORE) au.src=window.HEXCORE.playableURL(cur);
+    }
+  } }catch(e){}
+try{ if(HEXSHAPE==='box'){                    /* no event words on a room's door */
+  const h=document.querySelector('#splash h1.evt b');
+  if(h) h.textContent=(HEXBAKE&&HEXBAKE.name&&HEXBAKE.name!=='untitled look')?HEXBAKE.name:'Step inside';
+  const sl=document.getElementById('slogo'); if(sl) sl.alt=''; } }catch(e){}
+/* ---------- three scene ---------- */
+const canvas=document.getElementById('gl');
+let renderer=null, scene, cam, hasGL=true;
+try{
+  renderer=new THREE.WebGLRenderer({canvas, antialias:true});
+  renderer.setPixelRatio(Math.min(2,devicePixelRatio||1));
+}catch(e){ hasGL=false; }
+
+const R=10, APO=R*Math.cos(Math.PI/6), WALL_H=4.6;
+/* every wall placement asks ROOM; in hex mode it returns exactly R / APO above */
+const ROOM=(window.HEXCORE&&window.HEXCORE.makeRoom)?window.HEXCORE.makeRoom(HEXSHAPE)
+  :{shape:'hex',n:6,H:WALL_H,th:i=>i*Math.PI/3,dist:()=>APO,len:()=>R,arrivalZ:p=>APO-(p?0.7:2.2),
+    wallPoint:(i,g,y,a)=>{const t=i*Math.PI/3,d=APO-(a||0);return new THREE.Vector3(Math.sin(t)*d+Math.cos(t)*(g||0),y,-Math.cos(t)*d+Math.sin(t)*(g||0));},
+    perimeter:(t,a)=>{const q=t*Math.PI*2;return {x:Math.sin(q)*(APO-a),z:-Math.cos(q)*(APO-a)};}};
+let yaw=0, pitch=0;
+
+function portrait(){ return innerHeight>innerWidth; }
+function camHome(){
+  /* far-wall camera: phones park deeper + wider so the whole game wall frames with air */
+  const p=portrait();
+  cam.fov=p?74:58;
+  cam.position.set(0,1.7, ROOM.arrivalZ(p));
+  cam.updateProjectionMatrix();
+}
+
+if(hasGL){
+  scene=new THREE.Scene();
+  scene.fog=new THREE.Fog(0x07060d, 14, 46);
+  cam=new THREE.PerspectiveCamera(58, innerWidth/innerHeight, .1, 120);
+  camHome();
+
+  /* dome sky */
+  const dome=new THREE.Mesh(new THREE.SphereGeometry(46,32,18),
+    new THREE.MeshBasicMaterial({color:0x0b0919, side:THREE.BackSide}));
+  scene.add(dome);
+  let stars=null;
+  /* stars */
+  const starGeo=new THREE.BufferGeometry(); const sv=[];
+  for(let i=0;i<420;i++){ const t=Math.random()*Math.PI*2, ph=Math.random()*Math.PI*.45;
+    const r=40; sv.push(r*Math.sin(ph)*Math.cos(t), r*Math.cos(ph)+2, r*Math.sin(ph)*Math.sin(t)); }
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(sv,3));
+  stars=new THREE.Points(starGeo, new THREE.PointsMaterial({color:0x8b7bff,size:.16,transparent:true,opacity:.8})); scene.add(stars);
+  /* THE AURORA — glowing curtains around the whole sky, riding the music.
+     Brand palette only: violet -> purple -> teal with white peaks. */
+  const AUR={t:{value:0}, amp:{value:.35}, mid:{value:.3}, solo:{value:0}, sc:{value:new THREE.Color(1,1,1)}, bri:{value:1}};   /* solo/sc/bri: the builder's Sky glow (v40); defaults leave it exactly as it was */
+  const aurora=new THREE.Mesh(new THREE.CylinderGeometry(30,30,17,72,1,true),
+    new THREE.ShaderMaterial({side:THREE.BackSide, transparent:true, depthWrite:false,
+      blending:THREE.AdditiveBlending, uniforms:AUR,
+      vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+      fragmentShader:[
+        'varying vec2 vUv; uniform float t; uniform float amp; uniform float mid; uniform float solo; uniform vec3 sc; uniform float bri;',
+        'float band(float x,float o,float s){ return sin(x*s+o)*.5+.5; }',
+        'void main(){',
+        '  float u=vUv.x*6.28318;',
+        '  float w1=band(u, t*.55, 5.0)*band(u, -t*.31+2.1, 9.0);',
+        '  float w2=band(u, t*.42+4.0, 7.0)*band(u, t*.23+1.2, 13.0);',
+        '  float w3=band(u, -t*.6+1.7, 4.0)*band(u, t*.4+3.3, 11.0);',
+        '  float curtain=max(max(w1,w2*.85),w3*.7);',
+        '  float h=vUv.y;',
+        '  float wave=curtain*(.6+.4*sin(t*.8+u*3.0))*(.6+amp*1.6);',
+        '  float body=smoothstep(.05,.28,h)*smoothstep(1.0,.5,h);',
+        '  float glow=body*wave;',
+        '  float shimmer=pow(max(0.,curtain-.55),2.)*mid*2.2*body;',
+        '  vec3 violet=vec3(.545,.482,1.0); vec3 teal=vec3(.176,.831,.749); vec3 white=vec3(1.);',
+        '  vec3 col=mix(mix(violet, teal, band(u, t*.2, 2.0)), sc, solo);',
+        '  col=mix(col, white, shimmer);',
+        '  gl_FragColor=vec4(col*glow*2.3*bri, min(1.,glow*1.4*bri));',
+        '}'].join('\n')
+    }));
+  aurora.position.y=9.5; scene.add(aurora);
+
+  /* canvas-texture helper */
+  function ctex(w,h,draw){ const c=document.createElement('canvas'); c.width=w; c.height=h;
+    draw(c.getContext('2d'),w,h); const t=new THREE.CanvasTexture(c); t.anisotropy=4; t.colorSpace=THREE.SRGBColorSpace; return t; }
+  function itex(url){ const t=new THREE.TextureLoader().load(url);
+    t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=4;
+    t.wrapS=t.wrapT=THREE.ClampToEdgeWrapping; return t; }
+
+  /* wall dresses */
+  function wallBase(g,w,h,glow){
+    const grd=g.createLinearGradient(0,0,w*.4,h);
+    grd.addColorStop(0,'#171034'); grd.addColorStop(.7,'#0b0820'); grd.addColorStop(1,'#100b28');
+    g.fillStyle=grd; g.fillRect(0,0,w,h);
+    if(glow){ const rg=g.createRadialGradient(w/2,0,10,w/2,0,w*.7);
+      rg.addColorStop(0,'rgba(139,123,255,.32)'); rg.addColorStop(1,'rgba(139,123,255,0)');
+      g.fillStyle=rg; g.fillRect(0,0,w,h); }
+    g.strokeStyle='rgba(139,123,255,.5)'; g.lineWidth=6; g.strokeRect(3,3,w-6,h-6);
+  }
+  function skinWall(label,big,cta,ctaCol,mirror){
+    /* mirror=true anchors everything on the RIGHT half — for walls whose left
+       half faces away from the arrival camera */
+    return ctex(1024,512,(g,w,h)=>{
+      wallBase(g,w,h,true);
+      const bx=mirror?w*.06:w*.62, tx=mirror?w*.40:w*.06;
+      g.fillStyle='rgba(255,255,255,.06)'; g.fillRect(bx,h*.14,w*.26,h*.42);
+      g.strokeStyle='rgba(139,123,255,.6)'; g.lineWidth=3; g.strokeRect(bx,h*.14,w*.26,h*.42);
+      g.fillStyle='#c9bfff'; g.font='800 34px Manrope,sans-serif'; g.textAlign='center';
+      g.fillText(label==='THE MERCH WALL'?'TOUR TEE':'NEW ALBUM', bx+w*.13, h*.38);
+      g.textAlign='left';
+      g.fillStyle='#8f87b8'; g.font='800 24px Manrope,sans-serif';
+      g.fillText(label, tx, h*.56);
+      g.fillStyle='#fff'; g.font='68px Anton,sans-serif';
+      g.fillText(big, tx, h*.72);
+      g.fillStyle=ctaCol; g.beginPath(); g.roundRect(tx,h*.80,318,68,34); g.fill();
+      g.fillStyle='#07060d'; g.font='800 27px Manrope,sans-serif';
+      g.fillText(cta, tx+w*.035, h*.885);
+    });
+  }
+  /* the procedural dresses double as the "nothing dropped here yet" state */
+  const DEFMAP={};
+  function defaultMap(id){
+    if(DEFMAP[id]) return DEFMAP[id];
+    let t;
+    if(ROOM.shape==='box'){
+      if(id==='floor') t=floorDefTex();
+      else if(id==='bannerA') t=bannerTex('TRIO','#ffe9b3');
+      else if(id==='bannerB') t=bannerTex('THE ROOM','#ffffff');
+      else t=TEX.plain();
+      DEFMAP[id]=t; return t;
+    }
+    switch(id){
+      case 'wall0': t=TEX.game(); break;
+      case 'wall1': t=TEX.directive(); break;
+      case 'wall3': t=TEX.entry(); break;
+      case 'wall5': t=TEX.merch(); break;
+      case 'floor': t=floorDefTex(); break;
+      case 'bannerA': t=bannerTex('EVENT NIGHT','#ffe9b3'); break;
+      case 'bannerB': t=bannerTex('AHZ LIVE','#ffffff'); break;
+      default: t=TEX.plain();
+    }
+    DEFMAP[id]=t; return t;
+  }
+  const TEX={
+    plain: ()=>ctex(512,256,(g,w,h)=>wallBase(g,w,h,false)),
+    game: ()=>ctex(1024,512,(g,w,h)=>{ wallBase(g,w,h,true);
+      const rg=g.createRadialGradient(w/2,h/2,40,w/2,h/2,w*.55);
+      rg.addColorStop(0,'rgba(251,191,36,.18)'); rg.addColorStop(.5,'rgba(139,92,246,.14)'); rg.addColorStop(1,'rgba(0,0,0,0)');
+      g.fillStyle=rg; g.fillRect(0,0,w,h);
+      g.strokeStyle='rgba(251,191,36,.65)'; g.lineWidth=8; g.strokeRect(6,6,w-12,h-12); }),
+    merch: ()=>skinWall('THE MERCH WALL','SHOP THE DROP','OPEN STORE ↗','#fbbf24',true),
+    directive: ()=>skinWall('THE DIRECTIVE WALL','HEAR IT FIRST','LISTEN IN TRIO ↗','#2dd4bf'),
+    entry: ()=>ctex(1024,512,(g,w,h)=>{ wallBase(g,w,h,true);
+      g.fillStyle='#8f87b8'; g.font='800 26px Manrope,sans-serif'; g.textAlign='center';
+      g.fillText('// YOU ARRIVED HERE', w/2, h*.42);
+      g.fillStyle='#fff'; g.font='84px Anton,sans-serif';
+      g.fillText('THE ENTRY', w/2, h*.62); g.textAlign='left'; })
+  };
+  /* six walls: 0=game (faces the arrival camera), then clockwise */
+  /* DBR mapping: tile1 = game wall + entry wall; tile2 = the pair flanking the
+     game wall; tile3 = the pair flanking the entry */
+  const walls=[], clickable=[];
+  for(let i=0;i<ROOM.n;i++){
+    const src=slotSrc('wall'+i, DBR[WALLKEY[i]]);
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(ROOM.len(i),WALL_H),
+      new THREE.MeshBasicMaterial({map: src?itex(src):defaultMap('wall'+i)}));
+    m.position.copy(ROOM.wallPoint(i,0,WALL_H/2,0));
+    m.lookAt(0,WALL_H/2,0);
+    m.userData.wall=i; m.userData.slot='wall'+i; scene.add(m); walls.push(m);
+    if(ROOM.shape==='hex'&&(i===1||i===5)) clickable.push(m);
+  }
+
+  /* floor: hex + grid */
+  const hexShape=new THREE.Shape();
+  for(let i=0;i<6;i++){ const a=Math.PI/6+i*Math.PI/3;
+    const x=Math.cos(a)*R, y=Math.sin(a)*R; i?hexShape.lineTo(x,y):hexShape.moveTo(x,y); }
+  function floorDefTex(){ return ctex(1024,ROOM.shape==='box'?1536:1024,(g,w,h)=>{
+    g.fillStyle='#0d0a22'; g.fillRect(0,0,w,h);
+    g.strokeStyle='rgba(139,123,255,.22)'; g.lineWidth=2;
+    for(let x=0;x<w;x+=64){ g.beginPath(); g.moveTo(x,0); g.lineTo(x,h); g.stroke(); }
+    for(let y=0;y<h;y+=64){ g.beginPath(); g.moveTo(0,y); g.lineTo(w,y); g.stroke(); }
+    const rg=g.createRadialGradient(w/2,h/2,60,w/2,h/2,w*.6);
+    rg.addColorStop(0,'rgba(139,123,255,.25)'); rg.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle=rg; g.fillRect(0,0,w,h);
+  }); }
+  /* box floor: a plain rectangle; default UVs put the top of the art at the front wall */
+  const floorGeo=ROOM.shape==='box'?new THREE.PlaneGeometry(ROOM.W,ROOM.D):new THREE.ShapeGeometry(hexShape);
+  if(ROOM.shape!=='box'){ const uv=floorGeo.attributes.uv;
+    for(let i=0;i<uv.count;i++) uv.setXY(i,(uv.getX(i)+R)/(2*R),(uv.getY(i)+R)/(2*R)); }
+  const _fsrc=slotSrc('floor',DBR.floor);
+  const floor=new THREE.Mesh(floorGeo,
+    new THREE.MeshBasicMaterial({map: _fsrc?itex(_fsrc):defaultMap('floor')}));
+  floor.userData.slot='floor';
+  floor.rotation.x=-Math.PI/2; if(ROOM.shape!=='box') floor.scale.set(1.18,1.18,1); scene.add(floor);
+
+  /* perimeter light columns — glowing beams, not bars: additive core + halo
+     sprite at the base, smooth-lerped to the music. Brand palette. */
+  const glowTex=ctex(128,128,(g,w,hh)=>{
+    const r=g.createRadialGradient(w/2,hh/2,2,w/2,hh/2,w/2);
+    r.addColorStop(0,'rgba(255,255,255,1)'); r.addColorStop(.35,'rgba(255,255,255,.45)');
+    r.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle=r; g.fillRect(0,0,w,hh); });
+  const cols=[];
+  const colCols=[0x9d8bff,0x8b7bff,0x2dd4bf,0xfbbf24];
+  for(let i=0;i<24;i++){
+    const a=i/24*Math.PI*2, c=colCols[i%4];
+    const core=new THREE.Mesh(new THREE.CylinderGeometry(.05,.09,1,8,1,true),
+      new THREE.MeshBasicMaterial({color:c,transparent:true,opacity:.9,blending:THREE.AdditiveBlending,depthWrite:false}));
+    const pp=ROOM.perimeter(i/24,0.5); core.position.set(pp.x, .5, pp.z);
+    const beam=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:c,transparent:true,
+      opacity:.5,blending:THREE.AdditiveBlending,depthWrite:false}));
+    beam.position.copy(core.position); beam.position.y=.16; beam.scale.set(1.1,.55,1);
+    const halo=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:c,transparent:true,
+      opacity:.35,blending:THREE.AdditiveBlending,depthWrite:false}));
+    halo.position.copy(core.position);
+    scene.add(core); scene.add(beam); scene.add(halo);
+    cols.push({core,beam,halo,v:0});
+  }
+  window._cols=cols;   /* debug probe */
+
+  /* corner/horizontal banners — floating above the wall line on rigging */
+  function bannerTex(txt,col){ return ctex(1024,196,(g,w,h)=>{
+    const grd=g.createLinearGradient(0,0,w,0);
+    grd.addColorStop(0,'#2a1c66'); grd.addColorStop(.55,'#150d3d'); grd.addColorStop(1,'#1d1250');
+    g.fillStyle=grd; g.beginPath(); g.roundRect(2,2,w-4,h-4,18); g.fill();
+    g.strokeStyle='rgba(251,191,36,.8)'; g.lineWidth=5; g.beginPath(); g.roundRect(4,4,w-8,h-8,18); g.stroke();
+    g.fillStyle=col; g.font='120px Anton,sans-serif'; g.textAlign='center';
+    g.shadowColor='rgba(139,123,255,.9)'; g.shadowBlur=26;
+    g.fillText(txt, w/2, h*.76);
+  }); }
+  /* over the two walls that flank the front — 1 and 5 in the hex, 1 and 3 in the box */
+  const bannerDefs=ROOM.shape==='box'?[ [1,'bannerA'], [3,'bannerB'] ]:[ [1,'bannerA'], [5,'bannerB'] ];
+  const banners=[], rigs=[];
+  bannerDefs.forEach(([wi,sid])=>{
+    const bsrc=slotSrc(sid, DBR.banner);
+    const b=new THREE.Mesh(new THREE.PlaneGeometry(4.6,.9),
+      new THREE.MeshBasicMaterial({map: bsrc?itex(bsrc):defaultMap(sid)}));
+    b.userData.slot=sid;
+    b.position.copy(ROOM.wallPoint(wi,0,WALL_H+0.72,1.3));
+    b.lookAt(0, WALL_H+0.72, 0);   /* plumb — faces the room level, no tilt */
+    scene.add(b); banners.push(b);
+    /* rigging drops */
+    [-1.6,1.6].forEach(dx=>{
+      const rig=new THREE.Mesh(new THREE.CylinderGeometry(.015,.015,1.4),
+        new THREE.MeshBasicMaterial({color:0xfbbf24,transparent:true,opacity:.8}));
+      const v=new THREE.Vector3(dx,0,0).applyQuaternion(b.quaternion);
+      rig.position.copy(b.position).add(v); rig.position.y=WALL_H+0.72+.45+.7;
+      scene.add(rig); rigs.push(rig);
+    });
+  });
+
+  /* dashed dock outline on the wall — visible while the panel floats free */
+  const dockTex=ctex(512,512,(g,w,hh)=>{
+    g.clearRect(0,0,w,hh);
+    g.strokeStyle='rgba(139,123,255,.55)'; g.lineWidth=5; g.setLineDash([18,14]);
+    g.strokeRect(8,8,w-16,hh-16);
+    g.fillStyle='rgba(143,135,184,.85)'; g.font='800 22px Manrope,sans-serif'; g.textAlign='center';
+    g.fillText('D O C K E D   H E R E', w/2, hh/2+8);
+  });
+  let dockHidden=false;
+  const dockMark=new THREE.Mesh(new THREE.PlaneGeometry(4.4,3.3),
+    new THREE.MeshBasicMaterial({map:dockTex,transparent:true,depthWrite:false}));
+  dockMark.position.set(0,2.35,-ROOM.dist(0)+0.1); dockMark.visible=false; scene.add(dockMark);
+
+  /* subtle center glow light feel via additive disc under the board wall */
+  /* the picture follows the frame. Inside a Trio page the frame can grow after load (iPhone's
+     Safari bar shrinks) without a window resize reaching us — so watch the document itself too,
+     and never let three.js pin a px height on the canvas (CSS keeps it full-frame). */
+  let lastW=0, lastH=0;
+  const fit=()=>{ const w=innerWidth, h=innerHeight; if(!w||!h||(w===lastW&&h===lastH)) return; lastW=w; lastH=h;
+    renderer.setSize(w,h,false); cam.aspect=w/h; cam.fov=portrait()?74:58; cam.updateProjectionMatrix(); };   /* lens only — never moves you */
+  addEventListener('resize',fit);
+  addEventListener('orientationchange',()=>setTimeout(fit,120));
+  addEventListener('pageshow',fit);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) fit(); });
+  try{ new ResizeObserver(fit).observe(document.documentElement); }catch(e){}
+  try{ if(window.visualViewport) visualViewport.addEventListener('resize',fit); }catch(e){}
+  fit();
+
+  /* ---------- look controls: full 360 yaw + clamped pitch ---------- */
+  let dragging=false,lx=0,ly=0,spun=false;
+  const down=(x,y)=>{ dragging=true; lx=x; ly=y; };
+  const move=(x,y)=>{ if(!dragging) return;
+    yaw+=(x-lx)*.0042; pitch=Math.max(-.45,Math.min(.45,pitch+(y-ly)*.0028));
+    lx=x; ly=y;
+    if(!spun&&Math.abs(yaw)>.4){ spun=true; document.getElementById('spinhint').classList.add('gone'); } };
+  canvas.addEventListener('pointerdown',e=>down(e.clientX,e.clientY));
+  addEventListener('pointermove',e=>move(e.clientX,e.clientY));
+  addEventListener('pointerup',()=>dragging=false);
+  canvas.addEventListener('touchstart',e=>down(e.touches[0].clientX,e.touches[0].clientY),{passive:true});
+  canvas.addEventListener('touchmove',e=>move(e.touches[0].clientX,e.touches[0].clientY),{passive:true});
+  addEventListener('touchend',()=>dragging=false);
+
+  /* tap side walls -> demo directives */
+  const ray=new THREE.Raycaster(), ptr=new THREE.Vector2();
+  canvas.addEventListener('click',e=>{
+    if(panelTarget===1){ panelTarget=0; return; }   /* tap the room — the panel docks back */
+    ptr.x=e.clientX/innerWidth*2-1; ptr.y=-(e.clientY/innerHeight)*2+1;
+    ray.setFromCamera(ptr,cam);
+    const hit=ray.intersectObjects(clickable)[0];
+    if(hit){ const w=hit.object.userData.wall;
+      pushLine('sys', w===5?'merch wall — store link goes here':'directive wall — album link goes here'); }
+  });
+
+  /* ---------- audio + analyser ---------- */
+  const audio=document.getElementById('track');
+  let analyser=null,dataArr=null,actx=null;
+  function wireAudio(){
+    if(analyser) return;            /* a demo may enter the room several times */
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext; actx=new AC();
+      const src=actx.createMediaElementSource(audio);
+      analyser=actx.createAnalyser(); analyser.fftSize=64;
+      dataArr=new Uint8Array(analyser.frequencyBinCount);
+      src.connect(analyser); analyser.connect(actx.destination);
+    }catch(e){}
+  }
+  /* 'auto'    — follow the track; when it is paused the room goes still.
+     'ambient'  — the idle drift the room has always had, ignoring the track. */
+  let DRIVE='auto';
+  function ambientLevels(){
+    const t=performance.now()/1000, out=new Uint8Array(32);
+    for(let k=0;k<32;k++){ const f=k/32;
+      out[k]=Math.min(255, 60+140*Math.abs(Math.sin(t*2.1+k))*Math.pow(1-f,1.2)); }
+    return out;
+  }
+  const SILENT=new Uint8Array(32);
+  function levels(){
+    if(DRIVE==='ambient') return ambientLevels();
+    if(analyser){
+      /* explicit rather than trusting the analyser to decay: paused means still */
+      if(audio.paused) return SILENT;
+      analyser.getByteFrequencyData(dataArr); return dataArr;
+    }
+    return ambientLevels();
+  }
+
+  /* ---------- the projected game-wall panel ---------- */
+  /* THE PANEL HAS TWO HOMES (Adam's detach-and-float): docked ON the wall like
+     a record on a music wall, or floating free in the room in front of you.
+     Tap the wall panel -> it detaches and glides forward (no blur, the room
+     stays alive). Tap the room -> it glides back to its dock. */
+  const gwall=document.getElementById('gwall');
+  const wallCenter=new THREE.Vector3(0,2.35,-ROOM.dist(0)+0.12);
+  const FLOAT_POS=new THREE.Vector3(0,1.95,-ROOM.dist(0)+4.4);
+  const wallEdgeL=new THREE.Vector3(-ROOM.len(0)*0.42,2.35,-ROOM.dist(0)+0.12);
+  const wallEdgeR=new THREE.Vector3(ROOM.len(0)*0.42,2.35,-ROOM.dist(0)+0.12);
+  const v1=new THREE.Vector3(), v2=new THREE.Vector3(), v3=new THREE.Vector3(), anchor=new THREE.Vector3();
+  let panelFloat=1, panelTarget=1;   /* 0=docked on the wall, 1=floating — OPEN on arrival (Adam) */
+  /* the floating panel is a PHYSICAL SIGN parked at FLOAT_POS: turn away and it
+     stays exactly where it stands in the room — off-screen when you look away,
+     never sliding, never re-zooming. Its size comes from projecting its own
+     world-space edges, same as any object in the space. */
+  const FLOAT_W=7.0;                     /* the sign's physical width in world units */
+  const fC=new THREE.Vector3(), fL=new THREE.Vector3(), fR=new THREE.Vector3();
+  function placePanel(){
+    panelFloat+=(panelTarget-panelFloat)*.14;
+    const e=panelFloat*panelFloat*(3-2*panelFloat);   /* smoothstep glide */
+    /* docked home: on the wall */
+    v1.copy(wallCenter).project(cam);
+    v2.copy(wallEdgeL).project(cam); v3.copy(wallEdgeR).project(cam);
+    const behindW=v1.z>1;
+    const wx=(v1.x*.5+.5)*innerWidth, wy=(-v1.y*.5+.5)*innerHeight;
+    const pw=Math.abs((v3.x-v2.x)*.5)*innerWidth;
+    const dockS=Math.max(.28,Math.min(.9,(pw*.74)/340));
+    /* floating home: the sign in the room */
+    fC.copy(FLOAT_POS).project(cam);
+    fL.set(FLOAT_POS.x-FLOAT_W/2,FLOAT_POS.y,FLOAT_POS.z).project(cam);
+    fR.set(FLOAT_POS.x+FLOAT_W/2,FLOAT_POS.y,FLOAT_POS.z).project(cam);
+    const behindF=fC.z>1;
+    const fx=(fC.x*.5+.5)*innerWidth, fy=(-fC.y*.5+.5)*innerHeight;
+    const fpw=Math.abs((fR.x-fL.x)*.5)*innerWidth;
+    const floatS=Math.min(fpw/340,1.35);
+    /* blend homes */
+    const x=wx+(fx-wx)*e, y=wy+(fy-wy)*e;
+    const s=dockS+(floatS-dockS)*e;
+    const fwd=new THREE.Vector3(); cam.getWorldDirection(fwd);
+    const face=fwd.dot(new THREE.Vector3(0,0,-1));
+    const dockOp=behindW?0:Math.max(0,(face-.35)/.5);
+    const floatOp=behindF?0:1;                        /* a sign doesn't fade — it just leaves the frame */
+    const op=dockOp*(1-e)+floatOp*e;
+    gwall.style.opacity=op;
+    gwall.classList.toggle('on',op>.5);
+    gwall.classList.toggle('docked',panelTarget===0);
+    gwall.style.left=x+'px'; gwall.style.top=y+'px';
+    gwall.style.transform='translate(-50%,-50%) scale('+s+')';
+    dockMark.visible=dockHidden?false:(panelFloat>.4);
+    dockMark.material.opacity=Math.min(1,(panelFloat-.4)*2);
+  }
+  /* docked panel: one tap detaches it */
+  gwall.addEventListener('click',e=>{
+    if(panelTarget===0){ panelTarget=1; e.stopPropagation(); }
+  });
+
+  /* ---------- staging + bake registry ----------
+     Inert without ?stage=1 / window.HEXBAKE. */
+  window.HEX={ ok:true, scene:scene, cam:cam, renderer:renderer, canvas:canvas,
+    walls:walls, banners:banners, floor:floor, clickable:clickable,
+    dome:dome, stars:stars, cols:cols, rigs:rigs, dock:dockMark, post:null,   /* v42: the Mood Room hides the event dressing and renders through its halo */
+    R:R, APO:APO, WALL_H:WALL_H, ROOM:ROOM, shape:ROOM.shape, portrait:portrait, camHome:camHome,
+    defaultMap:defaultMap, itex:itex, ctex:ctex, onFrame:[], levels:levels, aurora:aurora, AUR:AUR,
+    setPanel:function(v){ panelTarget=v; },
+    audioEl:audio,
+    openGame:function(url,title){
+      try{
+        if(!url) return;
+        const gf=document.getElementById('gframe'), gr=document.getElementById('groom');
+        const bar=gr.querySelector('.bar b'); if(bar&&title) bar.textContent=title;
+        gf.src=url; gr.classList.add('open');
+        try{ if(window.HEXCORE&&window.HEXCORE.sleep) window.HEXCORE.sleep(true,'game'); }catch(e){}   /* the room sleeps under the game */
+      }catch(e){}
+    },
+    onBoard:null, onLine:null,
+    hasAnalyser:function(){ return !!analyser; },
+    setDrive:function(m){ DRIVE=(m==='ambient')?'ambient':'auto'; },
+    getDrive:function(){ return DRIVE; },
+    startAudio:function(){
+      try{
+        if(!analyser) wireAudio();                    /* only ever once per element */
+        if(actx&&actx.state!=='running') actx.resume().catch(function(){});
+        audio.volume=.9;
+        return audio.play();
+      }catch(e){ return Promise.resolve(); }
+    },
+    addYaw:function(d){ yaw+=d; },
+    addPitch:function(d){ pitch=Math.max(-.45,Math.min(.45,pitch+d)); },
+    getPitch:function(){ return pitch; },
+    getYaw:function(){ return yaw; },
+    setYaw:function(v){ yaw=v; },
+    showPanel:function(b){ gwall.style.visibility=b?'':'hidden'; },
+    hideDock:function(){ dockHidden=true; dockMark.visible=false; },
+    enterRoom:function(){ const b=document.getElementById('enter'); if(b) b.click(); },
+    showSplash:function(){
+      const sp=document.getElementById('splash'); if(sp) sp.classList.remove('gone');
+      ['evchip','timer','spinhint','mute'].forEach(function(id){
+        const e=document.getElementById(id); if(e) e.style.display='none'; });
+      const r=document.getElementById('rail'); if(r) r.style.display='none';
+      document.body.classList.remove('over');
+      try{ audio.pause(); audio.currentTime=0; }catch(e){}
+    },
+    quietEnter:function(){ const sp=document.getElementById('splash'); if(sp) sp.classList.add('gone');
+      ['spinhint','mute'].forEach(id=>{ const e=document.getElementById(id); if(e) e.style.display=''; }); }
+  };
+  if(HEXBAKE&&HEXBAKE.tints){
+    const mm={floor:floor}; walls.forEach((w,i)=>mm['wall'+i]=w);
+    banners.forEach((b,i)=>mm[i===0?'bannerA':'bannerB']=b);
+    Object.keys(HEXBAKE.tints).forEach(k=>{ const m=mm[k], t=HEXBAKE.tints[k];
+      if(m&&t){ m.material.color.set(t.tint||'#ffffff').multiplyScalar(t.bright===undefined?1:t.bright);
+        m.material.needsUpdate=true; } });
+  }
+  if(HEXBAKE&&window.HEXCORE) window.HEXCORE.hydrate(HEXBAKE, scene);
+
+  /* ---------- render loop ---------- */
+  function frame(){
+    if(window.HEXSLEEP){ window.HEXWAKE=frame; return; }   /* asleep under the reel — no frames at all */
+    requestAnimationFrame(frame);
+    const d=levels();
+    const bass=(d[1]+d[2]+d[3])/765;
+    /* map every column onto the LIVE bins (0-19) — the top of the spectrum is
+       near-silent in real music, and columns parked there never danced */
+    cols.forEach((c,i)=>{ const tv=d[(i*7)%20]/255;
+      c.v+=(tv-c.v)*.25;
+      const hgt=.4+c.v*3.6;
+      c.core.scale.y=hgt; c.core.position.y=hgt/2;
+      c.core.material.opacity=.4+c.v*.6;
+      c.halo.position.y=hgt*.75; c.halo.scale.setScalar(.7+c.v*2.2);
+      c.halo.material.opacity=.12+c.v*.5;
+      c.beam.material.opacity=.25+c.v*.55; });
+    AUR.t.value=performance.now()/1000;
+    AUR.amp.value+= (bass-AUR.amp.value)*.08;
+    AUR.mid.value+= (((d[8]+d[12]+d[16])/765)-AUR.mid.value)*.1;
+    cam.rotation.set(0,0,0); cam.rotateY(-yaw); cam.rotateX(pitch);
+    if(window.HEX&&HEX.onFrame.length){ for(let i=0;i<HEX.onFrame.length;i++){ try{ HEX.onFrame[i](); }catch(e){} } }
+    if(HEX.post) HEX.post(); else renderer.render(scene,cam);
+    placePanel();
+  }
+  frame();
+
+  /* enter */
+  document.getElementById('enter').addEventListener('click',()=>{
+    document.getElementById('splash').classList.add('gone');
+    ['evchip','timer','spinhint','mute'].forEach(id=>document.getElementById(id).style.display='');
+    document.getElementById('rail').style.display='flex';
+    wireAudio(); audio.volume=.9; audio.play().catch(()=>{});
+    if(actx&&actx.state!=='running') actx.resume().catch(()=>{});
+    startEvent();
+    /* the lines above re-show the HUD, so a baked room's switches go on last */
+    if(window.HEXCORE&&HEXBAKE) window.HEXCORE.applyUI(HEXBAKE);
+  });
+}else{
+  window.HEX={ok:false};
+  /* no WebGL: flat fallback still runs board + reactions over the dark wash */
+  document.getElementById('enter').addEventListener('click',()=>{
+    document.getElementById('splash').classList.add('gone');
+    ['evchip','timer','mute'].forEach(id=>document.getElementById(id).style.display='');
+    document.getElementById('rail').style.display='flex';
+    const gw=document.getElementById('gwall');
+    gw.style.left='50%'; gw.style.top='46%'; gw.style.width='330px'; gw.style.opacity=1; gw.classList.add('on');
+    document.getElementById('track').play().catch(()=>{});
+    startEvent();
+  });
+}
+
+/* ============ EVENT ENGINE (mock players + real YOU scores) ============ */
+const NAMES=['MAXVOLT','JUNEBUG','KAYZEE','GOZER','PIXEL8','NOVA','DRIPKING','TESSA'];
+let players=NAMES.map((n,i)=>({n, s:12480-i*1240-((Math.random()*400)|0), you:false}));
+let youScore=null, over=false;
+
+function ini(n){ return n.slice(0,2); }
+function renderBoard(){
+  const all=players.slice();
+  if(youScore!=null) all.push({n:'YOU', s:youScore, you:true});
+  all.sort((a,b)=>b.s-a.s);
+  const rows=document.getElementById('rows'); rows.innerHTML='';
+  const youRk=all.findIndex(p=>p.you)+1;
+  all.slice(0,5).forEach((p,i)=>{
+    const r=document.createElement('div');
+    r.className='brow'+(i===0?' b1':'')+(p.you?' you':'');
+    r.innerHTML='<span class="rk">'+(i+1)+'</span><span class="av">'+ini(p.n)+'</span>'+p.n+
+      '<span class="sc">'+p.s.toLocaleString()+'</span>';
+    rows.appendChild(r);
+  });
+  if(youScore!=null&&youRk>5){
+    const r=document.createElement('div');
+    r.className='brow you';
+    r.innerHTML='<span class="rk">'+youRk+'</span><span class="av">YO</span>YOU<span class="sc">'+youScore.toLocaleString()+'</span>';
+    rows.appendChild(r);
+  }
+  if(window.HEX&&window.HEX.onBoard){ try{ window.HEX.onBoard(all, over); }catch(e){} }
+}
+function boardRows(){ const all=players.slice();
+  if(youScore!=null) all.push({n:'YOU', s:youScore, you:true});
+  return all.sort((a,b)=>b.s-a.s); }
+function topName(){ const all=players.slice(); if(youScore!=null) all.push({n:'YOU',s:youScore});
+  return all.sort((a,b)=>b.s-a.s)[0].n; }
+
+/* thread */
+const lines=[];
+function pushLine(kind,html){
+  lines.push(kind==='sys'?'<span class="sys">'+html+'</span>':html);
+  if(lines.length>8) lines.shift();
+  /* one bubble per line, stacked up the right side */
+  document.getElementById('tl').innerHTML=lines.map(h=>{ const sys=h.indexOf('<span class="sys">')===0, me=h.indexOf('<b>YOU</b>')===0;
+    return '<div class="m'+(sys?' sys':'')+(me?' me':'')+'">'+h+'</div>'; }).join('');
+  if(window.HEX&&window.HEX.onLine){ try{ window.HEX.onLine(lines.slice()); }catch(e){} }
+}
+
+let pcount=1;
+function startEvent(){
+  renderBoard();
+  pushLine('sys','you’re in — welcome to the DEATH BY ROMY event');
+  /* fake room fills up */
+  const fill=setInterval(()=>{ if(over) return clearInterval(fill);
+    pcount+=1+(Math.random()*2|0);
+    document.getElementById('pcount').textContent=pcount+' players in';
+    if(pcount>40) clearInterval(fill);
+  },2600);
+  /* mock players grind */
+  setInterval(()=>{ if(over) return;
+    const p=players[(Math.random()*players.length)|0];
+    const wasTop=topName();
+    p.s+=150+(Math.random()*750|0);
+    renderBoard();
+    const nowTop=topName();
+    if(nowTop!==wasTop) pushLine('sys','<b>'+nowTop+'</b> just took #1');
+  },5200+(Math.random()*4000|0));
+  /* mock reactions */
+  const EMO=['🔥','⚡','💀','🫡'];
+  setInterval(()=>{ if(over) return;
+    pushLine('r','<b>'+NAMES[(Math.random()*NAMES.length)|0]+'</b> '+EMO[(Math.random()*EMO.length)|0]);
+  },4200+(Math.random()*3800|0));
+  /* countdown */
+  let left=EVENT_MIN*60;
+  const tick=setInterval(()=>{
+    left--; if(left<=0){ left=0; clearInterval(tick); endEvent(); }
+    document.getElementById('timer').textContent=
+      String((left/60)|0).padStart(2,'0')+':'+String(left%60).padStart(2,'0');
+  },1000);
+}
+function endEvent(){
+  over=true; document.body.classList.add('over');
+  document.getElementById('lv').textContent='FINAL'; document.getElementById('lv').classList.add('done');
+  document.getElementById('play').disabled=true; document.getElementById('play').style.opacity=.4;
+  pushLine('sys','event over — board is final. <b>'+topName()+'</b> takes the night');
+}
+
+/* mute — the room's own volume switch; visualizers rest while silent */
+document.getElementById('mute').addEventListener('click',()=>{
+  const a=document.getElementById('track'), m=!a.muted;
+  a.muted=m;
+  const b=document.getElementById('mute');
+  b.textContent=m?'🔇':'🔊'; b.classList.toggle('off',m);
+});
+
+/* user reactions */
+document.querySelectorAll('#reacts button').forEach(b=>b.addEventListener('click',()=>{
+  pushLine('r','<b>YOU</b> '+b.dataset.r);
+}));
+
+/* ============ THE GAME LOOP — real rounds, real scores ============ */
+const groom=document.getElementById('groom'), gframe=document.getElementById('gframe');
+document.getElementById('play').addEventListener('click',()=>{
+  if(over) return;
+  if(window.HEXCORE&&window.HEXCORE.post&&window.HEXCORE.post({trio:'open',board:'game'})) return;   /* hosted: the page opens it */
+  gframe.src=GAME_URL; groom.classList.add('open');
+  try{ if(window.HEXCORE&&window.HEXCORE.sleep) window.HEXCORE.sleep(true,'game'); }catch(e){}
+});
+function backToRoom(){ groom.classList.remove('open'); gframe.src='about:blank';
+  try{ if(window.HEXCORE&&window.HEXCORE.sleep) window.HEXCORE.sleep(false,'game'); }catch(e){}
+  try{ if(window._gameTookAudio){ window._gameTookAudio=false; document.getElementById('track').play().catch(()=>{}); } }catch(e){} }
+document.getElementById('back').addEventListener('click',backToRoom);
+/* the shipped games broadcast their runs: {trio:'score', score:N} and {trio:'exit'} */
+addEventListener('message',e=>{
+  const d=e.data||{};
+  if(d.trio==='exit') backToRoom();
+  /* a game that brings its own track says so: the room's song steps aside, and comes back after */
+  if(d.trio==='audio'&&d.state==='game'){ const au=document.getElementById('track'); if(au&&!au.paused){ window._gameTookAudio=true; au.pause(); } }
+  if(d.trio==='audio'&&d.state==='free'&&window._gameTookAudio){ window._gameTookAudio=false; document.getElementById('track').play().catch(()=>{}); }
+  if(d.trio==='score'){
+    const sc=(d.score!=null&&isFinite(+d.score))?Math.max(0,Math.floor(+d.score)):null;
+    if(sc==null||over) return;
+    const first=youScore==null, wasTop=topName();
+    if(first||sc>youScore){ youScore=sc; renderBoard();
+      pushLine('sys', first?'<b>YOU</b> are on the board':'<b>YOU</b> moved up — '+sc.toLocaleString());
+      if(topName()==='YOU'&&wasTop!=='YOU') pushLine('sys','<b>YOU</b> just took #1 ⚡');
+    }
+  }
+});
+</script>
+<script data-stage>
+{{TRIO:FILE lib/meshopt-simplifier-classic.js}}</script>
+<script data-stage>
+{{TRIO:FILE lib/meshopt-encoder-classic.js}}</script>
+<style data-stage>
+{{TRIO:FILE lib/stage.css}}</style>
+<script data-stage>
+{{TRIO:FILE lib/stage.js}}</script>
+</body>
+</html>

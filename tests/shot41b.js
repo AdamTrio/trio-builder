@@ -1,0 +1,20 @@
+const { chromium } = require('playwright');
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  let p=await b.newPage({viewport:{width:1280,height:760}});
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=room');
+  await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(1500);
+  await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="room"]').click()); await p.waitForTimeout(200);
+  if(!(await p.evaluate(()=>document.getElementById('stg').classList.contains('open')))) await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="room"]').click());
+  await p.waitForTimeout(300); await p.screenshot({path:'/tmp/claude-0/s41b-room.png'});
+  await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="windows"]').click()); await p.waitForTimeout(300);
+  await p.evaluate(()=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()==='+ new set').click()); await p.waitForTimeout(800);
+  await p.screenshot({path:'/tmp/claude-0/s41b-setedit.png'});
+  await p.close();
+  p=await b.newPage({viewport:{width:390,height:800},isMobile:true,hasTouch:true});
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=event');
+  await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(1500);
+  await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="light"]').click()); await p.waitForTimeout(400);
+  await p.screenshot({path:'/tmp/claude-0/s41b-phone.png'});
+  await b.close();
+})();

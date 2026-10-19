@@ -1,0 +1,41 @@
+// t105 — v60: Open Space skies — night (original) / galaxy / day / my own image; below: void / ocean / cloud sea
+const { chromium } = require('playwright'); const path=require('path');
+const A=f=>path.join(__dirname,'..','setassets',f); const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const p=await ctx.newPage();
+  const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=open',{waitUntil:'domcontentloaded'});
+  await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(2500);
+  const seg=(lab,v)=>p.evaluate(([lab,v])=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent===lab&&[...x.querySelectorAll('button')].some(y=>y.textContent===v)); [...f.querySelectorAll('button')].find(x=>x.textContent===v).click(); },[lab,v]);
+  const tab=t=>p.evaluate(t=>{ const b=document.querySelector('#stgRail button[data-tab="'+t+'"]'); if(b.getAttribute('aria-pressed')!=='true') b.click(); },t);
+  const st=()=>p.evaluate(()=>{ const H=window.HEX, X=H._mood.skyp; return {mode:X.skyM.uniforms.mode.value, below:X.skyM.uniforms.below.value, sea:X.sea.visible, sun:X.sunL.visible, img:X.img.visible, dome:H.dome.visible, stars:H.stars.visible, far:H.cam.far}; });
+  await tab('room'); await p.waitForTimeout(400);
+  let s=await st(); check(s.mode===0&&s.dome&&s.stars&&!s.sea&&s.far>=2000,'default: the original night sky ('+JSON.stringify(s)+')');
+  const opts=await p.evaluate(()=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent==='Sky'); return [...f.querySelectorAll('button')].map(x=>x.textContent).join('|'); });
+  check(opts==='night|galaxy|day|my own image','Sky: night · galaxy · day · my own image ('+opts+')');
+  await seg('Sky','galaxy'); await seg('Below','ocean'); await p.waitForTimeout(1500);
+  s=await st(); check(s.mode===1&&s.sea&&!s.dome&&!s.stars,'galaxy + ocean ('+JSON.stringify(s)+')');
+  await seg('Sky','day'); await seg('Below','cloud sea'); await p.waitForTimeout(1500);
+  s=await st(); check(s.mode===2&&s.below===1&&s.sun&&!s.sea,'day + cloud sea ('+JSON.stringify(s)+')');
+  await seg('Sky','my own image'); await p.waitForTimeout(500);
+  const [fc]=await Promise.all([p.waitForEvent('filechooser'),p.evaluate(()=>{ const r=[...document.querySelectorAll('#stg .strow')].find(x=>/your sky/.test(x.textContent)); r.querySelector('button.add').click(); })]);
+  await fc.setFiles(A('pano.jpg')); await p.waitForTimeout(2500);
+  s=await st(); check(s.mode===3&&s.img,'my own image wraps the sky ('+JSON.stringify(s)+')');
+  await seg('Below','ocean'); await p.waitForTimeout(1200);
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); window.HEX.setYaw(0); }); await p.waitForTimeout(600);
+  const [dl]=await Promise.all([p.waitForEvent('download'),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]);
+  await dl.saveAs(path.join(__dirname,'..','out','t105.html'));
+  // back to the original night for the next checks
+  await p.evaluate(()=>document.getElementById('stg').classList.add('open')); await tab('room'); await p.waitForTimeout(400);
+  await seg('Sky','night'); await seg('Below','void'); await p.waitForTimeout(1000);
+  s=await st(); check(s.mode===0&&s.dome&&s.stars&&!s.sea&&!s.img,'night is always there to go back to ('+JSON.stringify(s)+')');
+  await p.close();
+  const q=await ctx.newPage(); const e2=[]; q.on('pageerror',x=>e2.push(String(x)));
+  await q.goto('http://127.0.0.1:8765/out/t105.html',{waitUntil:'domcontentloaded'}); await q.waitForFunction(()=>window.HEX&&window.HEX.ok); await q.waitForTimeout(4500);
+  const pub=await q.evaluate(()=>{ const X=window.HEX._mood.skyp, O=window.HEXBAKE.mood.open; return {sky:O.sky, carried:!!window.HEXBAKE.assets[O.skyImg], img:X.img.visible, sea:X.sea.visible}; });
+  check(pub.sky==='image'&&pub.carried&&pub.img&&pub.sea,'published: own sky picture carried + shown, ocean below ('+JSON.stringify(pub)+')');
+  await q.close();
+  check(errs.length===0&&e2.length===0,'no errors'+((errs[0]||e2[0])?': '+(errs[0]||e2[0]):''));
+  await b.close(); ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(`\n${ok.length}/${ok.length+bad.length}`);
+})();

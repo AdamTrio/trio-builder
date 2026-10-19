@@ -1,0 +1,42 @@
+// t111 — v65: a cut window can start closed and fade open on a trigger (tap / collecting the egg / song); reset closes it
+const { chromium } = require('playwright'); const path=require('path');
+const A=f=>path.join(__dirname,'..','setassets',f); const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const errs=[];
+  const p=await ctx.newPage(); p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=mood',{waitUntil:'domcontentloaded'});
+  await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(2000);
+  const seg=(lab,v)=>p.evaluate(([lab,v])=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent===lab&&[...x.querySelectorAll('button')].some(y=>y.textContent===v)); [...f.querySelectorAll('button')].find(x=>x.textContent===v).click(); },[lab,v]);
+  const btn=t=>p.evaluate(t=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()===t).click(),t);
+  const tab=t=>p.evaluate(t=>{ const b=document.querySelector('#stgRail button[data-tab="'+t+'"]'); if(b.getAttribute('aria-pressed')!=='true') b.click(); },t);
+  const win=pg=>pg.evaluate(()=>{ const P=window.HEXCORE.WINPANES.wall0; return P?{k:+window.HEXCORE.winK('wall0').toFixed(2), vis:P.pane.visible, op:+P.mat.opacity.toFixed(2)}:null; });
+  await tab('windows'); await p.waitForTimeout(300); await btn('+ cut a window here'); await p.waitForTimeout(800);
+  await seg('At the start','closed · opens on a trigger'); await p.waitForTimeout(800);
+  let w=await win(p); check(w&&w.k===0&&w.vis&&w.op>.3&&w.op<.6,'closed window: a faint pane in the builder ('+JSON.stringify(w)+')');
+  // a model whose tap opens it
+  await tab('models'); await p.waitForTimeout(300);
+  const [fc]=await Promise.all([p.waitForEvent('filechooser'),btn('drop a model file…')]); await fc.setFiles(A('model.glb'));
+  await p.waitForFunction(()=>window.HEX.scene.children.some(o=>o.userData.isProp),null,{timeout:30000}); await p.waitForTimeout(600);
+  await p.evaluate(()=>{ const s=[...document.querySelectorAll('#stgBody>.stsec')].find(x=>x.style.display!=='none'); const r=s.querySelector('.strow'); if(r&&!r.classList.contains('sel')) r.click(); }); await p.waitForTimeout(400);
+  await seg('Tap sets things off','on'); await p.waitForTimeout(300); await btn('+ something happens'); await p.waitForTimeout(300);
+  const opt=await p.evaluate(()=>{ const s=[...document.querySelectorAll('#stg select')].find(x=>x.querySelector('optgroup')); const o=[...s.options].find(x=>x.value==='win:wall0'); if(!o) return null; s.value='win:wall0'; s.dispatchEvent(new Event('change')); return o.textContent; }); await p.waitForTimeout(400);
+  check(opt==='window · wall 0','trigger list offers "window · wall 0"');
+  const does=await p.evaluate(()=>{ const c=[...document.querySelectorAll('#stg select')].find(x=>x.querySelector('optgroup')).closest('.stctl'); return [...c.querySelectorAll('.stseg button')].map(x=>x.textContent+(x.classList.contains('on')?'*':'')).join(','); });
+  check(/opens\*/.test(does)&&/closes/.test(does),'· does: opens / closes ('+does+')');
+  await p.evaluate(()=>{ [...document.querySelectorAll('#stg .stf')].filter(x=>(x.querySelector('label')||{}).textContent==='· fade').forEach(x=>{ const i=x.querySelector('input'); i.value=.4; i.dispatchEvent(new Event('input')); }); }); await p.waitForTimeout(300);
+  await btn('▶ play the moment'); await p.waitForTimeout(2500);
+  w=await win(p); check(w.k>.98&&!w.vis,'▶ play the moment: the window fades open ('+JSON.stringify(w)+')');
+  await btn('reset the room'); await p.waitForTimeout(800);
+  w=await win(p); check(w.k===0&&w.vis,'reset: closed again');
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); window.HEX.setYaw(0); }); await p.waitForTimeout(500);
+  const [dl]=await Promise.all([p.waitForEvent('download',{timeout:120000}),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]);
+  await dl.saveAs(path.join(__dirname,'..','out','t111.html')); await p.close();
+  const q=await ctx.newPage(); q.on('pageerror',x=>errs.push('pub: '+x));
+  await q.goto('http://127.0.0.1:8765/out/t111.html',{waitUntil:'domcontentloaded',timeout:120000}); await q.waitForFunction(()=>window.HEX&&window.HEX.ok,null,{timeout:120000}); await q.waitForTimeout(4000);
+  w=await win(q); check(w&&w.k===0&&w.vis&&w.op===1,'published room: fans see plain wall ('+JSON.stringify(w)+')');
+  await q.evaluate(()=>{ const all=window.HEXCORE.TRIGPROPS(); const pr=all.find(x=>x.trig&&x.trig.on); window.HEXCORE.eggDone('prop:'+pr.id, window.HEX); }); await q.waitForTimeout(2500);
+  w=await win(q); check(w.k>.98&&!w.vis,'published: the model\'s moment (e.g. egg collected) fades the window open ('+JSON.stringify(w)+')');
+  check(!errs.length,'no errors '+errs.join(' | '));
+  ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(ok.length+'/'+(ok.length+bad.length)); await b.close();
+})();

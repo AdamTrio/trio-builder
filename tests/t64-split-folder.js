@@ -1,0 +1,11 @@
+const { chromium } = require('playwright');
+(async () => { const b = await chromium.launch({ args: ['--use-gl=swiftshader','--enable-unsafe-swiftshader','--autoplay-policy=no-user-gesture-required'] });
+  const p = await b.newPage({ viewport: { width: 420, height: 860 } }); const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  const bad=[]; p.on('response',r=>{ if(r.status()>=400) bad.push(r.status()+' '+r.url()); });
+  await p.goto('http://127.0.0.1:8765/testroom2/split/index.html'); await p.waitForFunction(()=>window.HEX&&window.HEX.ok); await p.waitForTimeout(2500);
+  const r = await p.evaluate(async () => { const tiles=(window.HEXCORE.TILES.video||[]).map(g=>g.userData.vurl).filter(Boolean);
+    const vids=window.HEXCORE.allVideos(window.HEXCORE.TILES)().map(x=>x.video.readyState);
+    window.HEXCORE.openReel(1,'x'); await new Promise(r=>setTimeout(r,1500));
+    const rv=[...document.querySelectorAll('#hexReel video')].map(v=>[v.getAttribute('src'),v.readyState,!v.paused]);
+    return {tiles, vids, rv, song:document.getElementById('track').getAttribute('src')}; });
+  console.log(JSON.stringify(r)); console.log('404s', bad, 'errors', errs); await b.close(); })();

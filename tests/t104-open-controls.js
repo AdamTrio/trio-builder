@@ -1,0 +1,38 @@
+// t104 — v59.1: Open Space — glossy pack, sky glow off (just stars), walls "all invisible", roof control
+const { chromium } = require('playwright'); const path=require('path');
+const A=f=>path.join(__dirname,'..','setassets',f); const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const p=await ctx.newPage();
+  const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=open',{waitUntil:'domcontentloaded'});
+  await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(2500);
+  const seg=(lab,v)=>p.evaluate(([lab,v])=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent===lab&&[...x.querySelectorAll('button')].some(y=>y.textContent===v)); [...f.querySelectorAll('button')].find(x=>x.textContent===v).click(); },[lab,v]);
+  const tab=t=>p.evaluate(t=>{ const b=document.querySelector('#stgRail button[data-tab="'+t+'"]'); if(b.getAttribute('aria-pressed')!=='true') b.click(); },t);
+  await tab('walls'); await p.waitForTimeout(400);
+  const [fc]=await Promise.all([p.waitForEvent('filechooser'),p.evaluate(()=>{ const r=[...document.querySelectorAll('#stg .strow')].find(x=>/Wall 0/.test(x.textContent)); r.querySelector('button.add').click(); })]);
+  await fc.setFiles(A('back.jpg')); await p.waitForTimeout(2000);
+  await tab('room'); await p.waitForTimeout(400);
+  await seg('Floor','glossy'); await p.waitForTimeout(1500);
+  const fl=await p.evaluate(()=>{ const m=window.HEX.floor.material; return {env:!!m.envMap, r:+m.roughness.toFixed(2), map:!!m.map}; });
+  check(fl.env&&fl.map,'Floor: glossy → reflective floor ('+JSON.stringify(fl)+')');
+  await seg('Sky glow','off · just stars'); await p.waitForTimeout(800);
+  check(await p.evaluate(()=>!window.HEX.aurora.visible&&window.HEX.stars.visible),'Sky glow off → just stars');
+  await seg('Walls','all invisible'); await p.waitForTimeout(800);
+  check(await p.evaluate(()=>window.HEX.walls[0].material.opacity<.5),'Walls: all invisible → even the art wall goes (faint in the builder)');
+  await seg('Roof','on'); await p.waitForTimeout(800);
+  check(await p.evaluate(()=>window.HEX._mood.ceil.visible),'Roof: on puts the lid back');
+  await seg('Roof','open sky'); await p.waitForTimeout(800);
+  check(await p.evaluate(()=>!window.HEX._mood.ceil.visible),'Roof: open sky takes it away again');
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); window.HEX.setYaw(0); }); await p.waitForTimeout(600);
+  const [dl]=await Promise.all([p.waitForEvent('download'),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]);
+  const bp=path.join(__dirname,'..','out','t104.html'); await dl.saveAs(bp); await p.close();
+  const q=await ctx.newPage(); const e2=[]; q.on('pageerror',x=>e2.push(String(x)));
+  await q.goto('http://127.0.0.1:8765/out/t104.html',{waitUntil:'domcontentloaded'}); await q.waitForFunction(()=>window.HEX&&window.HEX.ok); await q.waitForTimeout(3500);
+  const pub=await q.evaluate(()=>{ const H=window.HEX; return {walls:H.walls.filter(w=>w.visible).length, aur:H.aurora.visible, stars:H.stars.visible, env:!!H.floor.material.envMap, gloss:!!(window.HEXBAKE.mood.tex.gloss_col)}; });
+  check(pub.walls===0&&!pub.aur&&pub.stars&&pub.env&&pub.gloss,'published: no walls, just stars, glossy floor ('+JSON.stringify(pub)+')');
+  await q.screenshot({path:'shots/t104-pub.png'});
+  await q.close();
+  check(errs.length===0&&e2.length===0,'no errors'+((errs[0]||e2[0])?': '+(errs[0]||e2[0]):''));
+  await b.close(); ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(`\n${ok.length}/${ok.length+bad.length}`);
+})();

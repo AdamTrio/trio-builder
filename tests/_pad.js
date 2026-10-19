@@ -1,0 +1,13 @@
+const { chromium } = require('playwright');
+(async()=>{ const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']}); const p=await b.newPage({viewport:{width:1280,height:800}});
+ await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=mood',{waitUntil:'domcontentloaded'}); await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(1500);
+ await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="boards"]').click()); await p.waitForTimeout(300);
+ await p.evaluate(()=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent==='Signature wall'); [...f.querySelectorAll('button')].find(x=>x.textContent==='on').click(); }); await p.waitForTimeout(300);
+ await p.evaluate(()=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()==='✍ sign the wall').click()); await p.waitForSelector('#stgSigPad canvas');
+ await p.click('#stgSigPad [data-pen="#f2f0ea"]');
+ const r=await p.evaluate(()=>{ const c=document.querySelector('#stgSigPad canvas').getBoundingClientRect(); return {x:c.left,y:c.top,w:c.width,h:c.height}; });
+ const pts=[[.14,.62],[.2,.3],[.26,.66],[.33,.28],[.4,.62],[.47,.4],[.52,.6],[.6,.35],[.66,.62],[.74,.42],[.86,.5]];
+ await p.mouse.move(r.x+pts[0][0]*r.w,r.y+pts[0][1]*r.h); await p.mouse.down(); for(const q of pts.slice(1)) await p.mouse.move(r.x+q[0]*r.w,r.y+q[1]*r.h,{steps:8}); await p.mouse.up();
+ await p.mouse.move(r.x+.18*r.w,r.y+.76*r.h); await p.mouse.down(); await p.mouse.move(r.x+.8*r.w,r.y+.72*r.h,{steps:10}); await p.mouse.up();
+ await p.fill('#stgSigPad input.nm','Adam'); await p.fill('#stgSigPad input.ln','we were here');
+ await p.screenshot({path:'/mnt/user-data/outputs/v47-sign-pad.png'}); await b.close(); })();

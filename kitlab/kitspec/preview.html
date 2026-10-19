@@ -1,0 +1,68 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trio kit preview</title>
+<style>html,body{margin:0;height:100%;background:#0b0a12;color:#e8e4f7;font:13px Helvetica,Arial,sans-serif}#ui{position:fixed;left:12px;top:12px;display:flex;flex-wrap:wrap;gap:6px;max-width:70vw}#ui button{background:#211e2e;color:#cfc7f2;border:1px solid #34304a;border-radius:999px;padding:6px 10px;cursor:pointer}#ui button.on{background:#f5d400;color:#16141f}#info{position:fixed;left:12px;bottom:12px;background:rgba(10,9,18,.8);padding:8px 12px;border-radius:10px}</style>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+</head><body><div id="ui"></div><div id="info"></div>
+<script>
+/* ===== Trio kit harness v1 — the same TRIOKIT + K the Trio Builder gives a kit. Do not change this block. ===== */
+(function(){
+  const T=THREE, KITS=[]; const SQ=16;
+  window.TRIOKIT={register(k){ KITS.push(k); }, kits:KITS};
+  window.TRIOKIT_K=function(kit,low){ const TX={}, MC={}; let seed=1, lamps=[];
+    const K={THREE:T, SQ, low:!!low,
+      rnd(){ seed=(seed*16807)%2147483647; return seed/2147483647; },
+      tex(name,o){ o=o||{}; const k=name+'|'+(o.repeat||''); if(TX[k]) return TX[k]; const src=(kit.textures||{})[name]; if(!src) return null;
+        const t=new T.TextureLoader().load(src); t.wrapS=t.wrapT=T.RepeatWrapping; if(o.srgb!==false&&!/_(nrm|rgh|ao)$/.test(name)) t.colorSpace=T.SRGBColorSpace; t.anisotropy=low?2:8; return TX[k]=t; },
+      mat(o){ const k=JSON.stringify(o,(key,v)=>v&&v.isTexture?v.uuid:v); if(MC[k]) return MC[k]; return MC[k]=new T.MeshStandardMaterial(Object.assign({roughness:.9,metalness:0},o)); },
+      glow(color,strength){ return K.mat({color:'#000000',emissive:color,emissiveIntensity:strength==null?2:strength,toneMapped:false}); },
+      uv(geo,metres){ geo=geo.index?geo.toNonIndexed():geo; geo.computeVertexNormals(); const p=geo.attributes.position, n=geo.attributes.normal, a=[];
+        for(let i=0;i<p.count;i++){ const ax=Math.abs(n.getX(i)), ay=Math.abs(n.getY(i)), az=Math.abs(n.getZ(i)); let u,v;
+          if(ay>=ax&&ay>=az){ u=p.getX(i); v=-p.getZ(i); } else if(ax>=az){ u=p.getZ(i); v=p.getY(i); } else { u=p.getX(i); v=p.getY(i); } a.push(u/metres,v/metres); }
+        geo.setAttribute('uv',new T.Float32BufferAttribute(a,2)); return geo; },
+      lamp(x,y,z){ lamps.push([x,y,z]); },
+      door(x,y,z,facing){ K._door={x,y,z,facing:facing||0}; }};
+    K._begin=id=>{ seed=id.split('').reduce((a,c)=>a*31+c.charCodeAt(0),7)%2147483647||1; lamps=[]; K._door=null; };
+    K._lamps=()=>lamps; return K; };
+})();
+</script>
+<script>
+/* ===== PASTE THE KIT FILE BELOW THIS LINE (trio-kit-<slug>.js) ===== */
+TRIOKIT.register({ id:'sample', name:'Sample kit', version:1,
+  textures:{},
+  pieces:[
+    { id:'SAMPLE-N01', name:'Open ground', family:'N', edges:'NNNN', build(g,K){ const T=K.THREE;
+        const m=new T.Mesh(new T.PlaneGeometry(K.SQ,K.SQ).rotateX(-Math.PI/2),K.mat({color:'#4f7a3f'})); g.add(m);
+        for(let i=0;i<6;i++){ const b=new T.Mesh(new T.IcosahedronGeometry(.7,1),K.mat({color:'#3c6a36'})); b.position.set((K.rnd()-.5)*12,.5,(K.rnd()-.5)*12); g.add(b); } } },
+    { id:'SAMPLE-C01', name:'Road straight', family:'C', edges:'RCRC', build(g,K){ const T=K.THREE;
+        const road=new T.Mesh(new T.PlaneGeometry(10,K.SQ).rotateX(-Math.PI/2),K.mat({color:'#2b2a31'})); road.position.y=.02; g.add(road);
+        [-1,1].forEach(s=>{ const w=new T.Mesh(new T.BoxGeometry(3,.15,K.SQ),K.mat({color:'#9a98a3'})); w.position.set(s*6.5,.075,0); g.add(w);
+          const pole=new T.Mesh(new T.CylinderGeometry(.08,.1,5,8),K.mat({color:'#222'})); pole.position.set(s*6.8,2.65,0); g.add(pole);
+          const bulb=new T.Mesh(new T.SphereGeometry(.2,12,8),K.glow('#ffd59a')); bulb.position.set(s*6.8,5.2,0); g.add(bulb); K.lamp(s*6.8,5.2,0); }); } }
+  ],
+  props:[]
+});
+/* ===== END OF KIT ===== */
+</script>
+<script>
+/* ===== preview: every piece in a row, orbit with drag, wheel zooms ===== */
+(function(){ const T=THREE, kit=TRIOKIT.kits[TRIOKIT.kits.length-1]; if(!kit){ document.getElementById('info').textContent='No kit registered.'; return; }
+  const R=new T.WebGLRenderer({antialias:true}); R.setPixelRatio(Math.min(2,devicePixelRatio)); R.outputColorSpace=T.SRGBColorSpace; R.toneMapping=T.ACESFilmicToneMapping; R.shadowMap.enabled=true; document.body.appendChild(R.domElement);
+  const S=new T.Scene(); S.background=new T.Color('#1a1630'); const C=new T.PerspectiveCamera(45,1,.1,800);
+  const hemi=new T.HemisphereLight(0xb8c8ff,0x3a2f2a,.9); S.add(hemi); const sun=new T.DirectionalLight(0xfff0dc,2); sun.position.set(30,40,20); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048); Object.assign(sun.shadow.camera,{left:-120,right:120,top:60,bottom:-60,far:200}); S.add(sun);
+  const K=TRIOKIT_K(kit,false), all=(kit.pieces||[]).concat(kit.props||[]), groups=[]; let tris=0;
+  all.forEach((pc,i)=>{ K._begin(pc.id); const g=new T.Group(); pc.build(g,K,pc.looks?{look:pc.looks[0]}:undefined); g.position.x=(i-(all.length-1)/2)*20;
+    g.traverse(o=>{ if(o.isMesh){ o.castShadow=o.receiveShadow=true; const G=o.geometry; tris+=(G.index?G.index.count:G.attributes.position.count)/3; } });
+    const plinth=new T.Mesh(new T.BoxGeometry(16.2,.4,16.2),new T.MeshStandardMaterial({color:'#2a2638'})); plinth.position.set(g.position.x,-.21,0); S.add(plinth); S.add(g); groups.push(g); });
+  let night=false; const ui=document.getElementById('ui'), btn=(t,f)=>{ const b=document.createElement('button'); b.textContent=t; b.onclick=()=>{ f(b); }; ui.appendChild(b); return b; };
+  btn('day / night',()=>{ night=!night; S.background.set(night?'#06050d':'#1a1630'); hemi.intensity=night?.25:.9; sun.intensity=night?.15:2; });
+  all.forEach((pc,i)=>btn(pc.id,()=>{ target.set(groups[i].position.x,2,0); dist=34; }));
+  document.getElementById('info').textContent=kit.name+' · '+all.length+' pieces · '+Math.round(tris).toLocaleString()+' triangles';
+  const target=new T.Vector3(0,2,0); let yaw=.6, pitch=.5, dist=Math.max(40,all.length*10);
+  let drag=null; addEventListener('pointerdown',e=>{ if(e.target===R.domElement) drag=[e.clientX,e.clientY]; }); addEventListener('pointerup',()=>drag=null);
+  addEventListener('pointermove',e=>{ if(!drag) return; yaw-=(e.clientX-drag[0])*.005; pitch=Math.max(.05,Math.min(1.45,pitch+(e.clientY-drag[1])*.005)); drag=[e.clientX,e.clientY]; });
+  addEventListener('wheel',e=>{ dist=Math.max(8,Math.min(400,dist*(1+e.deltaY*.001))); });
+  const size=()=>{ R.setSize(innerWidth,innerHeight); C.aspect=innerWidth/innerHeight; C.updateProjectionMatrix(); }; addEventListener('resize',size); size();
+  (function loop(){ C.position.set(target.x+Math.sin(yaw)*Math.cos(pitch)*dist,target.y+Math.sin(pitch)*dist,target.z+Math.cos(yaw)*Math.cos(pitch)*dist); C.lookAt(target); R.render(S,C); requestAnimationFrame(loop); })();
+})();
+</script></body></html>

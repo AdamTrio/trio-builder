@@ -1,0 +1,47 @@
+// t127 — v78: the BANNER PLANE (flies laps, the banner plays the clips on both sides) + searchlight beam tips can't go black
+const { chromium } = require('playwright'); const path=require('path'); const fs=require('fs');
+const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader','--autoplay-policy=no-user-gesture-required']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const errs=[];
+  const p=await ctx.newPage(); p.on('pageerror',e=>errs.push(''+e));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=world',{waitUntil:'domcontentloaded'});
+  await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec'),null,{timeout:120000}); await p.waitForTimeout(2500);
+  const btn=t=>p.evaluate(t=>{ const x=[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()===t); if(!x) return false; x.click(); return true; },t);
+  const seg=(lab,t)=>p.evaluate(([lab,t])=>{ const r=[...document.querySelectorAll('#stg .stf')].filter(x=>x.querySelector('label')&&x.querySelector('label').textContent===lab).pop(); if(!r) return false; const x=[...r.querySelectorAll('button')].find(x=>x.textContent===t); if(!x) return false; x.click(); return true; },[lab,t]);
+  await p.evaluate(()=>{ window.confirm=()=>true; document.querySelector('#stgRail button[data-tab="models"]').click(); }); await p.waitForTimeout(300);
+  check(await btn('+ Banner plane'),'Models has "+ Banner plane"'); await p.waitForTimeout(2000);
+  const lab=await p.evaluate(()=>[...document.querySelectorAll('#stg .stf label')].map(l=>l.textContent));
+  check(lab.includes('Loop')&&lab.includes('Height'),'its panel: Loop and Height');
+  const hint=await p.evaluate(()=>[...document.querySelectorAll('#stg .sthint')].map(x=>x.textContent).find(t=>/32:9/.test(t))||'');
+  check(/1920 × 540/.test(hint),'the banner asks for 32:9 clips (1920 × 540)');
+  const [fc]=await Promise.all([p.waitForEvent('filechooser'),btn('+ clip')]); await fc.setFiles(path.join(__dirname,'..','setassets','arcade','teaser1.webm')); await p.waitForTimeout(3000);
+  const pos=()=>p.evaluate(()=>{ const q=window.HEXCORE.WORLDPROPS().find(q=>q.kind==='bannerplane'), u=window.HEXCORE.PROPG[q.id].children[0].userData.plane||window.HEXCORE.PROPG[q.id].getObjectByName&&null;
+    let pl=null; window.HEXCORE.PROPG[q.id].traverse(o=>{ if(o.userData.plane) pl=o.userData.plane; }); const v=new THREE.Vector3(); pl.craft.getWorldPosition(v); return {x:+v.x.toFixed(1),y:+v.y.toFixed(1),z:+v.z.toFixed(1),loop:q.fly.loop}; });
+  const a=await pos(); await p.waitForTimeout(1500); const c=await pos();
+  check(a.y>15&&Math.hypot(c.x-a.x,c.z-a.z)>3,'it flies laps up in the sky '+JSON.stringify([a,c]));
+  const S=await p.evaluate(()=>{ const S=Object.values(window.HEXCORE.SCREENS).find(S=>S.p.kind==='bannerplane'); return S?{video:!!(S.mesh.material.map&&S.mesh.material.map.isVideoTexture), both:S.mesh.material.side===THREE.DoubleSide, always:S.always}:null; });
+  check(S&&S.video&&S.both,'the banner plays the clip, on both sides '+JSON.stringify(S));
+  const sg=await seg('Loop','large'); await p.waitForTimeout(1500); const L=await pos();
+  const big=await p.evaluate(()=>{ const q=window.HEXCORE.WORLDPROPS().find(q=>q.kind==='bannerplane'); let pl=null; window.HEXCORE.PROPG[q.id].traverse(o=>{ if(o.userData.plane) pl=o.userData.plane; }); return pl.craft.position.x; });
+  check(sg&&L.loop==='large'&&big>90,'Loop → large widens the loop');
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); const N=window.HEXCORE.NAV; N.pos.x=-60; N.pos.z=-60; window.HEX.setYaw(Math.PI*.75); }); await p.waitForTimeout(2000);
+  const pl=await p.evaluate(()=>{ const S=Object.values(window.HEXCORE.SCREENS).find(S=>S.p.kind==='bannerplane'); return !S.v.paused; });
+  check(S&&S.always&&pl,'it keeps playing wherever you stand');
+  // searchlight beam: the tip fades (clamped), never a black spot
+  await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="light"]').click()); await p.waitForTimeout(300);
+  await btn('+ Event searchlight'); await p.waitForTimeout(1200);
+  const fs2=await p.evaluate(()=>window.HEXCORE.SEARCHES[0].userData.bm.fragmentShader);
+  check(/clamp\(vy,0\.,1\.\)/.test(fs2)&&/max\(col\*a/.test(fs2),'searchlight beams fade out at the tip (no black circles)');
+  const bp=path.join(__dirname,'..','out','t127.html');
+  await p.evaluate(()=>document.getElementById('stg').classList.remove('open'));
+  const [dl]=await Promise.all([p.waitForEvent('download',{timeout:180000}),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]); await dl.saveAs(bp);
+  const html=fs.readFileSync(bp,'utf8'); check(/data-screens/.test(html)&&/bannerplane/.test(html),'a bake with the plane carries it');
+  const q=await ctx.newPage(); q.on('pageerror',e=>errs.push('pub: '+e)); await q.goto('file://'+bp,{waitUntil:'domcontentloaded'}); await q.waitForTimeout(9000);
+  const pub=await q.evaluate(()=>{ const S=Object.values((window.HEXCORE||{}).SCREENS||{}).find(S=>S.p.kind==='bannerplane'); let pad=null; if(S) S.g.traverse(o=>{ if(o.userData.plane) pad=o.userData.plane.pad.visible; }); return S?{pad}:null; });
+  check(pub&&pub.pad===false,'published: the plane flies, the builder ring is hidden '+JSON.stringify(pub));
+  await q.close();
+  check(!errs.length,'no page errors '+JSON.stringify(errs.slice(0,3)));
+  await b.close();
+  ok.forEach(m=>console.log('  ✓ '+m)); bad.forEach(m=>console.log('  ✗ '+m)); console.log((bad.length?'FAIL ':'PASS ')+ok.length+' / '+(ok.length+bad.length));
+})();

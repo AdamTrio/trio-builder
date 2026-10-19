@@ -1,0 +1,8 @@
+out/
+dist/
+backups/
+node_modules/
+__pycache__/
+*.zip
+shots/
+.DS_Store

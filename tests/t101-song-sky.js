@@ -1,0 +1,64 @@
+// t101 — v57: an egg plays a song; "when its song plays" opens the sky and wakes the visualizers
+const { chromium } = require('playwright'); const path=require('path');
+const A=f=>path.join(__dirname,'..','setassets',f); const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader','--autoplay-policy=no-user-gesture-required']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const p=await ctx.newPage();
+  const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=mood',{waitUntil:'domcontentloaded'});
+  await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(1500);
+  const seg=(lab,v)=>p.evaluate(([lab,v])=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent===lab&&[...x.querySelectorAll('button')].some(y=>y.textContent===v)); [...f.querySelectorAll('button')].find(x=>x.textContent===v).click(); },[lab,v]);
+  const btn=t=>p.evaluate(t=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()===t).click(),t);
+  const tab=t=>p.evaluate(t=>{ const b=document.querySelector('#stgRail button[data-tab="'+t+'"]'); if(b.getAttribute('aria-pressed')!=='true') b.click(); },t);
+  // visualizers: light poles + lasers, waiting
+  await tab('vibe'); await p.waitForTimeout(400);
+  await p.evaluate(()=>{ [...document.querySelectorAll('#stg .stchips button')].filter(x=>/Light poles|Laser fans/.test(x.textContent)).forEach(x=>x.click()); }); await p.waitForTimeout(500);
+  check(await p.evaluate(()=>[...document.querySelectorAll('#stg .stf label')].some(l=>l.textContent==='Visualizers start')),'Vibe tab: "At the start" for the visualizers');
+  await seg('Visualizers start','off · waits'); await p.waitForTimeout(400);
+  check(await p.evaluate(()=>window.HEXFX.getK()<.5),'builder: waiting visualizers show faintly');
+  // the model + its egg + a song
+  await tab('models'); await p.waitForTimeout(300);
+  const [fc]=await Promise.all([p.waitForEvent('filechooser'),btn('drop a model file…')]); await fc.setFiles(A('model.glb'));
+  await p.waitForFunction(()=>window.HEX.scene.children.some(o=>o.userData.isProp),null,{timeout:30000}); await p.waitForTimeout(600);
+  await p.evaluate(()=>{ const s=[...document.querySelectorAll('#stgBody>.stsec')].find(x=>x.style.display!=='none'); const r=s.querySelector('.strow'); if(r&&!r.classList.contains('sel')) r.click(); }); await p.waitForTimeout(400);
+  await seg('Easter egg','on'); await p.waitForTimeout(400);
+  await btn('+ song'); await p.waitForTimeout(300);
+  const [fc2]=await Promise.all([p.waitForEvent('filechooser'),p.evaluate(()=>{ const r=[...document.querySelectorAll('#stg .strow')].find(x=>/a song/.test(x.textContent)); r.querySelector('button.add').click(); })]);
+  await fc2.setFiles(A('test-song.mp3')); await p.waitForTimeout(800);
+  check(await p.evaluate(()=>[...document.querySelectorAll('#stg .strow')].some(x=>/test-song/.test(x.textContent))),'egg: + song takes an mp3');
+  await seg('Tap sets things off','on'); await p.waitForTimeout(300);
+  await seg('Sets things off','when its song plays'); await p.waitForTimeout(300);
+  await btn('+ something happens'); await p.waitForTimeout(300); await btn('+ something happens'); await p.waitForTimeout(300);
+  await p.evaluate(()=>{ const ss=[...document.querySelectorAll('#stg select')].filter(x=>x.querySelector('optgroup')); ss[0].value='sky'; ss[0].dispatchEvent(new Event('change')); }); await p.waitForTimeout(300);
+  await p.evaluate(()=>{ const ss=[...document.querySelectorAll('#stg select')].filter(x=>x.querySelector('optgroup')); ss[1].value='vibe'; ss[1].dispatchEvent(new Event('change')); }); await p.waitForTimeout(300);
+  const words=await p.evaluate(()=>[...document.querySelectorAll('#stg select')].filter(x=>x.querySelector('optgroup')).map(x=>x.closest('.stctl')).map(c=>[...c.querySelectorAll('button.on, button.gold')].map(x=>x.textContent).join('/')+':'+[...c.querySelectorAll('button')].map(x=>x.textContent).join(',')));
+  check(/opens/.test(words[0])&&/turn on/.test(words[1]),'the sky · opens, the visualizers · turn on ('+words.join(' || ')+')');
+  await p.evaluate(()=>{ [...document.querySelectorAll('#stg .stf')].filter(x=>(x.querySelector('label')||{}).textContent==='· fade').forEach(x=>{ const i=x.querySelector('input'); i.value=.3; i.dispatchEvent(new Event('input')); }); }); await p.waitForTimeout(300);
+  const ceil=pg=>pg.evaluate(()=>{ const S=window.HEX._mood; return {vis:S.ceil.visible, op:+S.ceil.material.opacity.toFixed(2), k:+window.HEXFX.getK().toFixed(2), song:!!(window.HEX.audioEl&&!window.HEX.audioEl.paused)}; });
+  await btn('▶ play the moment'); await p.waitForTimeout(2500);
+  let c=await ceil(p); check(!c.vis&&c.k>.95&&c.song,'builder ▶ play the moment: song plays, roof gone, visualizers up ('+JSON.stringify(c)+')');
+  await btn('reset the room'); await p.waitForTimeout(800);
+  c=await ceil(p); check(c.vis&&c.op===1&&c.k<.5&&!c.song,'reset: roof back, visualizers faint, song stopped ('+JSON.stringify(c)+')');
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); window.HEX.setYaw(0); }); await p.waitForTimeout(500);
+  const [dl]=await Promise.all([p.waitForEvent('download',{timeout:120000}),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]);
+  const bp=path.join(__dirname,'..','out','t101.html'); await dl.saveAs(bp); await p.close();
+  const q=await ctx.newPage(); const e2=[]; q.on('pageerror',x=>e2.push(String(x)));
+  await q.goto('http://127.0.0.1:8765/out/t101.html',{waitUntil:'domcontentloaded'}); await q.waitForFunction(()=>window.HEX&&window.HEX.ok); await q.waitForTimeout(3500);
+  c=await ceil(q); check(c.vis&&c.op===1&&c.k===0&&!c.song,'published: roof on, visualizers hidden, silent ('+JSON.stringify(c)+')');
+  await q.screenshot({path:'shots/t101-before.png'});
+  // tapping the model alone does NOT set it off (it waits for the song)
+  const mp=await q.evaluate(()=>{ const E=window.HEXCORE.ROOMEGGS.userData.eggs[0]; const v=E.glint.getWorldPosition(new THREE.Vector3()).project(window.HEX.cam); return {x:(v.x+1)/2*innerWidth,y:(1-v.y)/2*innerHeight}; });
+  await q.mouse.click(mp.x,mp.y); await q.waitForTimeout(2200);
+  c=await ceil(q); const card=await q.evaluate(()=>[...document.querySelectorAll('#hexEgg button')].map(x=>x.textContent));
+  check(c.vis&&c.k===0,'opening the egg alone: roof stays, visualizers wait');
+  check(card.some(t=>/play track/.test(t)),'the pop-up shows "play track" ('+card.join('|')+')');
+  await q.evaluate(()=>[...document.querySelectorAll('#hexEgg button')].find(x=>/play track/.test(x.textContent)).click()); await q.waitForTimeout(2500);
+  console.log('AUDIO',await q.evaluate(()=>{ const a=window.HEX.audioEl; return JSON.stringify({src:(a.src||'').slice(0,30), paused:a.paused, err:a.error&&a.error.code, ds:!!a.getAttribute('data-song'), props:(window.HEXCORE.TRIGPROPS&&window.HEXCORE.TRIGPROPS()||[]).map(p=>p.trig&&p.trig.when)}); }));
+  c=await ceil(q); check(!c.vis&&c.k>.95&&c.song,'press play: song plays, sky opens, visualizers wake ('+JSON.stringify(c)+')');
+  await q.evaluate(()=>{ const E=document.getElementById('hexEgg'); if(E) window.HEXCORE.closeEgg(); }); await q.waitForTimeout(1500);
+  await q.screenshot({path:'shots/t101-after.png'});
+  check(await q.evaluate(()=>window.HEX.stars.visible),'stars show through the open roof');
+  await q.close();
+  check(errs.length===0&&e2.length===0,'no errors'+((errs[0]||e2[0])?': '+(errs[0]||e2[0]):''));
+  await b.close(); ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(`\n${ok.length}/${ok.length+bad.length}`);
+})();

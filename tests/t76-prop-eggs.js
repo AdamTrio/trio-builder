@@ -1,0 +1,41 @@
+// t76 — Easter eggs on things in the room (models / hung images), not just in sets
+const { chromium } = require('playwright'); const fs=require('fs'), path=require('path');
+const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const p=await ctx.newPage();
+  const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=room'); await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(1000);
+  await p.evaluate(()=>{ const h=[...document.querySelectorAll('#stg .stsec>h4')].find(x=>x.textContent.indexOf('5 ·')>=0); if(h.parentNode.classList.contains('closed')) h.click(); });
+  const lib=await p.evaluate(()=>{ const s=[...document.querySelectorAll('#stg .stsec')].find(x=>x.querySelector('h4').textContent.indexOf('5 ·')>=0);
+    const b=[...s.querySelectorAll('button')].find(x=>/^\+ /.test(x.textContent)&&!/upload|hang/.test(x.textContent)); b.click(); return b.textContent; });
+  await p.waitForTimeout(800);
+  await p.evaluate(()=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent==='Easter egg'); [...f.querySelectorAll('button')].find(x=>x.textContent==='on').click(); });
+  await p.waitForTimeout(400);
+  await p.evaluate(()=>{ const t=[...document.querySelectorAll('#stg .stctl input')].find(i=>i.placeholder==='a short title'); t.value='Secret crate'; t.dispatchEvent(new Event('input'));
+    const ta=document.querySelector('#stg .stctl textarea'); ta.value='You found it.'; ta.dispatchEvent(new Event('input')); });
+  await p.waitForTimeout(600);
+  const g=await p.evaluate(()=>({n:window.HEXCORE.ROOMEGGS.userData.eggs.length, glint:!!(window.HEXCORE.ROOMEGGS.userData.eggs[0]||{}).glint}));
+  check(g.n===1&&g.glint,'room model ('+lib+') has an egg and glints in the builder');
+  await p.screenshot({path:'shots/t76-builder.png'});
+  const [dl]=await Promise.all([p.waitForEvent('download'),p.evaluate(()=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()==='publish room').click())]);
+  const bp=path.join(__dirname,'..','out','t76-baked.html'); await dl.saveAs(bp);
+  const html=fs.readFileSync(bp,'utf8'); const bake=JSON.parse(html.match(/window\.HEXBAKE=(\{.*?\});<\/script>/s)[1].replace(/\\u003c/g,'<'));
+  check(bake.props[0].egg&&bake.props[0].egg.on,'bake carries the egg on the prop');
+  const q=await b.newPage({viewport:{width:420,height:860}}); const e2=[]; q.on('pageerror',e=>e2.push(String(e)));
+  await q.goto('http://127.0.0.1:8765/out/t76-baked.html'); await q.waitForFunction(()=>window.HEX&&window.HEX.ok); await q.waitForTimeout(2500);
+  await q.evaluate(()=>window.HEX.enterRoom&&window.HEX.enterRoom()); await q.waitForTimeout(1500);
+  const pt=await q.evaluate(()=>{ const T=window.THREE,H=window.HEX,E=window.HEXCORE.ROOMEGGS.userData.eggs[0]; if(!E) return null;
+    const w=new T.Vector3(); new T.Box3().setFromObject(E.obj).getCenter(w); let best=null;
+    for(let a=-Math.PI;a<Math.PI;a+=.02){ H.setYaw(a); H.cam.rotation.set(0,0,0); H.cam.rotateY(-a); H.cam.updateMatrixWorld(); const v=w.clone().project(H.cam); if(v.z<1&&(!best||Math.abs(v.x)<Math.abs(best.x))) best={a,x:v.x}; }
+    H.setYaw(best.a); return best; });
+  check(!!pt,'published room: the prop egg is registered');
+  await q.waitForTimeout(700);
+  const sp=await q.evaluate(()=>{ const T=window.THREE,H=window.HEX,E=window.HEXCORE.ROOMEGGS.userData.eggs[0]; const w=new T.Vector3(); new T.Box3().setFromObject(E.obj).getCenter(w); const v=w.project(H.cam); return {x:(v.x+1)/2*innerWidth,y:(1-v.y)/2*innerHeight}; });
+  await q.mouse.click(sp.x,sp.y); await q.waitForTimeout(700);
+  const op=await q.evaluate(()=>{ const E=document.getElementById('hexEgg'); return {on:!!E&&E.classList.contains('on'), h:E&&(E.querySelector('h3')||{}).textContent}; });
+  check(op.on&&op.h==='Secret crate','published room: tapping the model opens its pop-up');
+  await q.screenshot({path:'shots/t76-popup.png'});
+  check(e2.length===0,'published: no errors'+(e2[0]?': '+e2[0]:'')); check(errs.length===0,'builder: no errors'+(errs[0]?': '+errs[0]:''));
+  await b.close(); ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(`\n${ok.length}/${ok.length+bad.length}`);
+})();

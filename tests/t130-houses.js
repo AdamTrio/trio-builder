@@ -1,0 +1,43 @@
+// t130 — v81: HOUSES (World → Models → Houses): cottage, suburban, brownstone, corner shop, modern — finishes, colours, Fresh/Abandoned, front door opens a room
+const { chromium } = require('playwright'); const path=require('path'); const fs=require('fs');
+const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const errs=[];
+  const open=async q=>{ const p=await ctx.newPage(); p.on('pageerror',e=>errs.push(''+e)); await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html'+q,{waitUntil:'domcontentloaded'});
+    await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec'),null,{timeout:120000}); await p.waitForTimeout(2500); await p.evaluate(()=>{ window.confirm=()=>true; }); return p; };
+  const bake=async(p,name)=>{ await p.evaluate(()=>document.getElementById('stg').classList.remove('open')); const [dl]=await Promise.all([p.waitForEvent('download',{timeout:180000}),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]); const f=path.join(__dirname,'..','out',name); await dl.saveAs(f); return f; };
+  const p=await open('?space=world');
+  const seg=(lab,t)=>p.evaluate(([lab,t])=>{ const r=[...document.querySelectorAll('#stg .stf')].filter(x=>x.querySelector('label')&&x.querySelector('label').textContent===lab).pop(); if(!r) return false; const x=[...r.querySelectorAll('button')].find(x=>x.textContent===t); if(!x) return false; x.click(); return true; },[lab,t]);
+  await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="models"]').click()); await p.waitForTimeout(400);
+  const btns=await p.evaluate(()=>{ const h=[...document.querySelectorAll('#stg .stsub')].find(x=>x.textContent==='Houses'); return h?[...h.nextElementSibling.querySelectorAll('button')].map(b=>b.textContent):[]; });
+  check(['+ Cottage','+ Suburban house','+ Brownstone','+ Corner shop','+ Modern house'].every(t=>btns.includes(t)),'Models → Houses offers five houses '+JSON.stringify(btns));
+  for(const t of btns){ await p.evaluate(t=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()===t).click(),t); await p.waitForTimeout(1300); }
+  const hs=await p.evaluate(()=>window.HEXCORE.WORLDPROPS().filter(q=>/^h_/.test(q.kind)).map(q=>{ const g=window.HEXCORE.PROPG[q.id]; let tri=0, door=null; const bb=new THREE.Box3().setFromObject(g);
+    g.traverse(o=>{ if(o.isMesh){ const G=o.geometry; tri+=(G.index?G.index.count:G.attributes.position.count)/3; } if(o.name==='DOOR_house') door=o.userData.ownDoor; }); return {k:q.kind, tri:Math.round(tri), h:+(bb.max.y-bb.min.y).toFixed(1), door, dOn:!!(q.door&&q.door.on), solid:!!q.solid}; }));
+  check(hs.length===5&&hs.every(h=>h.tri>200&&h.h>4),'each house builds '+JSON.stringify(hs.map(h=>h.k+':'+h.tri+'t/'+h.h+'m')));
+  check(hs.every(h=>h.door===true&&h.dOn&&h.solid),'each is solid and its own front door can open a room');
+  const st=()=>p.evaluate(()=>{ const q=window.HEXCORE.WORLDPROPS().filter(q=>/^h_/.test(q.kind)).pop(), g=window.HEXCORE.PROPG[q.id]; let walls=null, tri=0; g.traverse(o=>{ if(o.isMesh){ const G=o.geometry; tri+=(G.index?G.index.count:G.attributes.position.count)/3; if(o.name==='walls') walls=o.material; } });
+    return {kind:q.kind, house:q.house, map:!!(walls&&walls.map), col:walls&&('#'+walls.color.getHexString()), tri:Math.round(tri)}; });
+  const s0=await st(); await seg('Walls','brick'); await p.waitForTimeout(1200); const s1=await st();
+  check(s1.house.walls&&s1.house.walls.t==='brick'&&s1.map,'Walls → brick gives it brick walls '+JSON.stringify(s1.house));
+  await seg('Look','abandoned'); await p.waitForTimeout(1500); const s2=await st();
+  check(s2.house.look==='abandoned'&&s2.tri>s1.tri&&s2.col!==s1.col,'Look → abandoned: faded colours, boards, grime, weeds '+JSON.stringify([s1.tri,s2.tri,s1.col,s2.col]));
+  await p.evaluate(()=>{ const r=[...document.querySelectorAll('#stg .strow')].find(x=>x.textContent.includes('Corner shop')); if(r) r.click(); }); await p.waitForTimeout(800);
+  const labs=await p.evaluate(()=>[...document.querySelectorAll('#stg .stf label')].map(l=>l.textContent));
+  check(['Look','Walls','Walls colour','Trim','Front door','Window lights','Awning','Sign'].every(x=>labs.includes(x)),'the corner shop’s panel: look, walls + colour, trim, door, lights, awning, sign');
+  await p.evaluate(()=>{ const r=[...document.querySelectorAll('#stg .stf')].find(x=>x.querySelector('label')&&x.querySelector('label').textContent==='Sign'); if(r){ const i=r.querySelector('input'); i.value='night owl'; i.dispatchEvent(new Event('change')); } }); await p.waitForTimeout(800);
+  const sg=await p.evaluate(()=>window.HEXCORE.WORLDPROPS().filter(q=>q.kind==='h_shop').pop().house.sign);
+  check(sg==='NIGHT OWL','the shop sign says what you type '+JSON.stringify(sg));
+  const bp=await bake(p,'t130.html'); const html=fs.readFileSync(bp,'utf8');
+  check(/data-houses/.test(html)&&/brick_col/.test(html),'a bake with houses carries them and their wall textures');
+  const q=await ctx.newPage(); q.on('pageerror',e=>errs.push('pub: '+e)); await q.goto('http://127.0.0.1:8765/out/t130.html',{waitUntil:'domcontentloaded',timeout:120000}); await q.waitForTimeout(9000);
+  const pub=await q.evaluate(()=>{ let n=0, mapped=0; Object.values(window.HEXCORE.PROPG||{}).forEach(g=>g.traverse(o=>{ if(o.name==='walls'){ n++; if(o.material.map) mapped++; } })); return {n,mapped}; });
+  check(pub.n===5&&pub.mapped===5,'published: all five houses, walls textured '+JSON.stringify(pub)); await q.close(); await p.close();
+  const c=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const r=await c.newPage(); r.on('pageerror',e=>errs.push('plain: '+e));
+  await r.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=world',{waitUntil:'domcontentloaded'}); await r.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec'),null,{timeout:120000}); await r.waitForTimeout(2500);
+  const rp=await bake(r,'t130-plain.html'); check(!/data-houses/.test(fs.readFileSync(rp,'utf8')),'a world without houses carries none');
+  check(!errs.length,'no page errors '+JSON.stringify(errs.slice(0,3)));
+  await b.close();
+  ok.forEach(m=>console.log('  ✓ '+m)); bad.forEach(m=>console.log('  ✗ '+m)); console.log((bad.length?'FAIL ':'PASS ')+ok.length+' / '+(ok.length+bad.length));
+})();

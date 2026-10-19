@@ -1,0 +1,228 @@
+<title>Mood Lab</title>
+<style>
+/* Layout: the room fills the screen; one slim control sheet floats bottom-right (bottom on phones). Single dark look — a lighting lab is judged in the dark. */
+:root{
+  --ink:#0b0b0c; --panel:rgba(16,16,18,.86); --line:rgba(235,232,220,.16); --fg:#ece9df; --dim:#9b978b; --hot:#e7e2a0;
+  --display:"Bebas Neue","Arial Narrow",Impact,sans-serif; --body:"IBM Plex Sans",system-ui,-apple-system,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%;margin:0;background:var(--ink);color:var(--fg);font-family:var(--body);overflow:hidden}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#tag{position:fixed;left:16px;top:calc(14px + env(safe-area-inset-top,0px));display:flex;align-items:baseline;gap:10px;pointer-events:none}
+#tag b{font:400 26px/1 var(--display);letter-spacing:.08em}
+#tag span{font:500 10px var(--mono);letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+#fps{font-variant-numeric:tabular-nums}
+#sheet{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));width:310px;max-height:calc(100% - 90px);overflow:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+#sheet header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+#sheet header b{font:400 18px var(--display);letter-spacing:.1em}
+#sheet header button{font:600 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--fg);background:none;border:1px solid var(--line);border-radius:999px;padding:6px 10px;cursor:pointer}
+#sheet.min .grp{display:none}
+.grp{padding:12px 14px;border-bottom:1px solid var(--line);display:grid;gap:9px}
+.grp h3{margin:0;font:600 10px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--hot)}
+.row{display:grid;grid-template-columns:92px 1fr;gap:10px;align-items:center;font-size:12px}
+.row label{color:var(--dim)}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg button{flex:1 1 auto;font:600 11px var(--body);color:var(--fg);background:transparent;border:1px solid var(--line);border-radius:8px;padding:7px 6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--ink);border-color:var(--fg)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--hot);outline-offset:2px}
+input[type=range]{width:100%;accent-color:var(--hot)}
+input[type=color]{width:100%;height:28px;border:1px solid var(--line);border-radius:8px;background:transparent;padding:2px}
+.note{font-size:11px;line-height:1.45;color:var(--dim);margin:0}
+@media (max-width:620px){
+  #sheet{left:16px;right:16px;width:auto;max-height:52%}
+}
+@media (prefers-reduced-motion:reduce){ #sheet{-webkit-backdrop-filter:none;backdrop-filter:none} }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+
+<canvas id="gl"></canvas>
+<div id="tag"><b>MOOD LAB</b><span>test room · <span id="fps">–</span> fps</span></div>
+
+<div id="sheet">
+  <header><b>LIGHT &amp; SURFACE</b><button id="minbtn" type="button">hide</button></header>
+  <div class="grp">
+    <h3>Room light</h3>
+    <div class="row"><label for="amb">Overall light</label><input id="amb" type="range" min="0" max="1" step="0.01" value="0.07"></div>
+    <div class="row"><label>Preset</label><div class="seg" data-k="preset"><button data-v="dark">dark</button><button data-v="normal">like today</button></div></div>
+  </div>
+  <div class="grp">
+    <h3>Uplights</h3>
+    <div class="row"><label>How many</label><div class="seg" data-k="ups"><button data-v="0">0</button><button data-v="3">3</button><button data-v="6">6</button></div></div>
+    <div class="row"><label for="upc">Colour</label><input id="upc" type="color" value="#e8e39a"></div>
+    <div class="row"><label for="upi">Strength</label><input id="upi" type="range" min="0" max="3" step="0.01" value="1.2"></div>
+  </div>
+  <div class="grp">
+    <h3>Glow</h3>
+    <div class="row"><label>Glowing cross</label><div class="seg" data-k="cross"><button data-v="on">on</button><button data-v="off">off</button></div></div>
+    <div class="row"><label for="crc">Colour</label><input id="crc" type="color" value="#fff3c4"></div>
+    <div class="row"><label>Front wall art</label><div class="seg" data-k="artglow"><button data-v="on">glows</button><button data-v="off">lit only</button></div></div>
+    <div class="row"><label>Halo</label><div class="seg" data-k="bloom"><button data-v="on">on</button><button data-v="off">off</button></div></div>
+  </div>
+  <div class="grp">
+    <h3>Surfaces</h3>
+    <div class="row"><label>Floor</label><div class="seg" data-k="floor"><button data-v="concrete">concrete</button><button data-v="brick">brick</button><button data-v="metal">metal</button><button data-v="plain">plain</button></div></div>
+    <div class="row"><label>Walls</label><div class="seg" data-k="walls"><button data-v="concrete">concrete</button><button data-v="brick">brick</button><button data-v="metal">metal</button><button data-v="plain">plain</button></div></div>
+    <div class="row"><label for="sheen">Floor sheen</label><input id="sheen" type="range" min="0" max="1" step="0.01" value="0.55"></div>
+    <div class="row"><label for="bump">Texture depth</label><input id="bump" type="range" min="0" max="3" step="0.01" value="1.2"></div>
+  </div>
+  <div class="grp">
+    <h3>Phone test</h3>
+    <div class="row"><label>Quality</label><div class="seg" data-k="q"><button data-v="high">high</button><button data-v="low">low</button></div></div>
+    <p class="note">Drag to look around. Slide to walk toward the cross. Watch the fps on your phone: 50+ is smooth, under 30 is too heavy.</p>
+    <div class="row"><label for="walk">Walk</label><input id="walk" type="range" min="0" max="1" step="0.01" value="0.15"></div>
+  </div>
+</div>
+
+<script>__THREE__</script>
+<script>
+(function(){
+const TEX=__TEX__;
+const S={preset:'dark',ups:'6',cross:'on',artglow:'off',bloom:'on',floor:'concrete',walls:'concrete',q:'high'};
+const cv=document.getElementById('gl');
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.1;
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x050506); scene.fog=new THREE.Fog(0x050506,16,40);
+const cam=new THREE.PerspectiveCamera(60,1,.05,120);
+const R=10, APO=R*Math.cos(Math.PI/6), H=4.6;
+
+/* textures */
+const TL=new THREE.TextureLoader(); const T={};
+function tex(k,srgb,rx,ry){ const t=TL.load(TEX[k]); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(rx,ry); t.anisotropy=8; if(srgb) t.colorSpace=THREE.SRGBColorSpace; return t; }
+function pack(name,rx,ry){ return {map:tex(name+'_col',true,rx,ry), normalMap:tex(name+'_nrm',false,rx,ry), roughnessMap:tex(name+'_rgh',false,rx,ry)}; }
+
+/* lights */
+const hemi=new THREE.HemisphereLight(0xdcd8ff,0x1a1712,1); scene.add(hemi);
+const amb=new THREE.AmbientLight(0xffffff,0); scene.add(amb);
+
+/* floor + ceiling */
+const floorMat=new THREE.MeshStandardMaterial({color:0xffffff,roughness:1,metalness:0});
+const floor=new THREE.Mesh(new THREE.CircleGeometry(R,6,0),floorMat); floor.rotation.x=-Math.PI/2; scene.add(floor);
+const ceilMat=new THREE.MeshStandardMaterial({color:0x2a2a2a,roughness:1});
+const ceil=new THREE.Mesh(new THREE.CircleGeometry(R,6,0),ceilMat); ceil.rotation.x=Math.PI/2; ceil.position.y=H+.9; scene.add(ceil);
+
+/* six walls */
+const walls=[];
+for(let i=0;i<6;i++){
+  const t=i*Math.PI/3;
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(R,H+.9),new THREE.MeshStandardMaterial({color:0xffffff,roughness:1}));
+  m.position.set(Math.sin(t)*APO,(H+.9)/2,-Math.cos(t)*APO); m.lookAt(0,(H+.9)/2,0); scene.add(m); walls.push(m);
+}
+/* art panels: forest on the front wall, crowds either side */
+const artTex=tex('forest',true,1,1); const crowdTex=tex('crowd',true,1,1);
+const artMat=new THREE.MeshStandardMaterial({map:artTex,roughness:.85,emissive:0xffffff,emissiveMap:artTex,emissiveIntensity:0});
+const art=new THREE.Mesh(new THREE.PlaneGeometry(7.2,3.6),artMat); scene.add(art);
+art.position.copy(walls[0].position).multiplyScalar(.995); art.position.y=2.45; art.lookAt(0,2.45,0);
+[1,5].forEach(i=>{ const cm=new THREE.MeshStandardMaterial({map:crowdTex,roughness:.9,emissive:0xffffff,emissiveMap:crowdTex,emissiveIntensity:.05});
+  const p=new THREE.Mesh(new THREE.PlaneGeometry(1.4,3.6),cm); p.position.copy(walls[i].position).multiplyScalar(.995); p.position.y=2.4; p.lookAt(0,2.4,0); scene.add(p); });
+
+/* the glowing cross: emissive, plus a real light so it lights the floor */
+const crossMat=new THREE.MeshBasicMaterial({color:0xfff3c4,toneMapped:false});
+const cross=new THREE.Group();
+const v=new THREE.Mesh(new THREE.BoxGeometry(.07,1.7,.07),crossMat); v.position.y=.85; cross.add(v);
+const hz=new THREE.Mesh(new THREE.BoxGeometry(.95,.07,.07),crossMat); hz.position.y=1.22; cross.add(hz);
+cross.position.set(0,0,-APO+1.6); scene.add(cross);
+const crossLight=new THREE.PointLight(0xfff3c4,3.2,11,1.6); crossLight.position.set(0,1.1,-APO+1.9); scene.add(crossLight);
+
+/* uplights: a can at the foot of a wall, a spot washing up it */
+const ups=[]; const canMat=new THREE.MeshStandardMaterial({color:0x111111,roughness:.6,metalness:.6});
+const lensMat=new THREE.MeshBasicMaterial({color:0xe8e39a,toneMapped:false});
+for(let k=0;k<6;k++){
+  const i=k, t=i*Math.PI/3, side=(k%2?1:-1);
+  const wn=new THREE.Vector3(-Math.sin(t),0,Math.cos(t));               /* into the room */
+  const along=new THREE.Vector3(Math.cos(t),0,Math.sin(t)).multiplyScalar(side*3.4);
+  const base=new THREE.Vector3(Math.sin(t)*APO,0,-Math.cos(t)*APO).add(along).addScaledVector(wn,.35);
+  const sp=new THREE.SpotLight(0xe8e39a,6,8,.62,.75,1.3); sp.position.copy(base).setY(.12);
+  const tgt=new THREE.Object3D(); tgt.position.copy(base).addScaledVector(wn,-.3).setY(4.2); scene.add(tgt); sp.target=tgt; scene.add(sp);
+  const can=new THREE.Mesh(new THREE.CylinderGeometry(.09,.11,.16,14),canMat); can.position.copy(base).setY(.08); scene.add(can);
+  const lens=new THREE.Mesh(new THREE.CircleGeometry(.075,14),lensMat); lens.rotation.x=-Math.PI/2; lens.position.copy(base).setY(.161); scene.add(lens);
+  ups.push({sp,can,lens});
+}
+
+/* ---- halo (bloom): bright parts → blurred → added back ---- */
+const fsq=new THREE.Mesh(new THREE.PlaneGeometry(2,2)); const fsc=new THREE.Scene(); fsc.add(fsq); const fcam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const vs='varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }';
+const rtOpt={type:THREE.HalfFloatType}; let rtScene,rtA,rtB;
+const bright=new THREE.ShaderMaterial({uniforms:{t:{value:null},th:{value:.85}},vertexShader:vs,fragmentShader:
+  'varying vec2 vUv; uniform sampler2D t; uniform float th; void main(){ vec3 c=texture2D(t,vUv).rgb; float l=max(c.r,max(c.g,c.b)); gl_FragColor=vec4(c*smoothstep(th,th+.6,l),1.); }'});
+const blur=new THREE.ShaderMaterial({uniforms:{t:{value:null},d:{value:new THREE.Vector2()}},vertexShader:vs,fragmentShader:
+  'varying vec2 vUv; uniform sampler2D t; uniform vec2 d; void main(){ vec3 c=texture2D(t,vUv).rgb*.227;'+
+  'c+=texture2D(t,vUv+d*1.385).rgb*.316; c+=texture2D(t,vUv-d*1.385).rgb*.316; c+=texture2D(t,vUv+d*3.23).rgb*.07; c+=texture2D(t,vUv-d*3.23).rgb*.07; gl_FragColor=vec4(c,1.); }'});
+const comp=new THREE.ShaderMaterial({uniforms:{base:{value:null},bl:{value:null},k:{value:1.1},ex:{value:1.1}},vertexShader:vs,fragmentShader:
+  'varying vec2 vUv; uniform sampler2D base; uniform sampler2D bl; uniform float k; uniform float ex;'+
+  'vec3 aces(vec3 x){ x*=ex*.6; return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.); }'+
+  'void main(){ vec3 c=texture2D(base,vUv).rgb+texture2D(bl,vUv).rgb*k; c=aces(c); c=pow(c,vec3(1./2.2)); gl_FragColor=vec4(c,1.); }'});
+function makeRT(w,h){ [rtScene,rtA,rtB].forEach(r=>r&&r.dispose());
+  rtScene=new THREE.WebGLRenderTarget(w,h,Object.assign({samples:renderer.capabilities.isWebGL2?4:0},rtOpt));
+  const bw=Math.max(2,w>>2), bh=Math.max(2,h>>2);
+  rtA=new THREE.WebGLRenderTarget(bw,bh,rtOpt); rtB=new THREE.WebGLRenderTarget(bw,bh,rtOpt); }
+
+/* ---- apply the controls ---- */
+function setSeg(k,v){ S[k]=v; document.querySelectorAll('.seg[data-k="'+k+'"] button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===v?'true':'false')); apply(); }
+const $=id=>document.getElementById(id);
+function surf(mat,name,rx,ry,base){
+  if(name==='plain'){ mat.map=null; mat.normalMap=null; mat.roughnessMap=null; mat.color.set(base); }
+  else { const p=pack(name,rx,ry); mat.map=p.map; mat.normalMap=p.normalMap; mat.roughnessMap=p.roughnessMap; mat.color.set(0xffffff); }
+  mat.needsUpdate=true; }
+let lastFloor='', lastWalls='';
+function apply(){
+  const a=+$('amb').value;
+  hemi.intensity=a*1.6; amb.intensity=a*.35;
+  if(S.floor!==lastFloor){ surf(floorMat,S.floor,5,5,0x2b2a2e); lastFloor=S.floor; }
+  if(S.walls!==lastWalls){ walls.forEach(w=>surf(w.material,S.walls,4,2.2,0x38364a)); surf(ceilMat,S.walls==='plain'?'plain':'concrete',4,4,0x1d1c22); ceilMat.color.multiplyScalar(.35); lastWalls=S.walls; }
+  const bump=+$('bump').value; [floorMat,ceilMat].concat(walls.map(w=>w.material)).forEach(m=>{ if(m.normalMap) m.normalScale.set(bump,bump); });
+  if(S.walls!=='plain'){ artMat.normalMap=walls[0].material.normalMap; artMat.normalScale.set(bump*.6,bump*.6); } else artMat.normalMap=null; artMat.needsUpdate=true;
+  floorMat.roughness=1-+$('sheen').value*.75; floorMat.metalness=S.floor==='metal'?.55:0;
+  walls.forEach(w=>{ w.material.metalness=S.walls==='metal'?.45:0; });
+  const n=+S.ups, col=new THREE.Color($('upc').value), ui=+$('upi').value;
+  ups.forEach((u,k)=>{ const on=(n===6)||(n===3&&k%2===0); u.sp.visible=on; u.can.visible=on; u.lens.visible=on; u.sp.color.copy(col); u.sp.intensity=6*ui; });
+  lensMat.color.copy(col).multiplyScalar(2.2);
+  const cc=new THREE.Color($('crc').value); crossMat.color.copy(cc).multiplyScalar(3); crossLight.color.copy(cc);
+  cross.visible=crossLight.visible=S.cross==='on';
+  artMat.emissiveIntensity=S.artglow==='on'?.55:0;
+  resize();
+}
+document.querySelectorAll('.seg').forEach(g=>g.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return;
+  if(g.dataset.k==='preset'){ $('amb').value=b.dataset.v==='dark'?.07:.75; if(b.dataset.v==='normal') setSeg('ups','0'); }
+  setSeg(g.dataset.k,b.dataset.v); }));
+['amb','upc','upi','crc','sheen','bump'].forEach(id=>$(id).addEventListener('input',apply));
+$('minbtn').addEventListener('click',()=>{ const s=$('sheet'); s.classList.toggle('min'); $('minbtn').textContent=s.classList.contains('min')?'show':'hide'; });
+
+/* ---- look + walk ---- */
+let yaw=0,pitch=-.05,drag=null;
+cv.addEventListener('pointerdown',e=>{ drag=[e.clientX,e.clientY,yaw,pitch]; cv.setPointerCapture(e.pointerId); cv.style.cursor='grabbing'; });
+cv.addEventListener('pointermove',e=>{ if(!drag) return; yaw=drag[2]+(e.clientX-drag[0])*.004; pitch=Math.max(-.6,Math.min(.5,drag[3]+(e.clientY-drag[1])*.003)); });
+['pointerup','pointercancel'].forEach(t=>cv.addEventListener(t,()=>{ drag=null; cv.style.cursor='grab'; }));
+
+/* ---- size / quality ---- */
+let W=0,Hh=0;
+function resize(){ const pr=S.q==='high'?Math.min(2,devicePixelRatio||1):1;
+  const w=innerWidth, h=innerHeight; renderer.setPixelRatio(pr); renderer.setSize(w,h,false);
+  cam.aspect=w/h; cam.fov=w<h?74:60; cam.updateProjectionMatrix();
+  W=Math.round(w*pr); Hh=Math.round(h*pr); if(S.bloom==='on') makeRT(W,Hh); }
+addEventListener('resize',resize);
+
+/* ---- frame ---- */
+let fN=0,fT=performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const z=7-(+$('walk').value)*9.5; cam.position.set(0,1.65,z);
+  cam.rotation.set(0,0,0,'YXZ'); cam.rotation.order='YXZ'; cam.rotation.y=-yaw; cam.rotation.x=pitch;
+  crossLight.intensity=3.2*(.92+.08*Math.sin(now/260)*Math.sin(now/730));      /* a slight living flicker */
+  if(S.bloom==='on'&&rtScene){
+    renderer.setRenderTarget(rtScene); renderer.render(scene,cam);
+    fsq.material=bright; bright.uniforms.t.value=rtScene.texture; renderer.setRenderTarget(rtA); renderer.render(fsc,fcam);
+    for(let i=0;i<2;i++){
+      fsq.material=blur; blur.uniforms.t.value=rtA.texture; blur.uniforms.d.value.set(1/rtA.width,0); renderer.setRenderTarget(rtB); renderer.render(fsc,fcam);
+      blur.uniforms.t.value=rtB.texture; blur.uniforms.d.value.set(0,1/rtA.height); renderer.setRenderTarget(rtA); renderer.render(fsc,fcam);
+    }
+    fsq.material=comp; comp.uniforms.base.value=rtScene.texture; comp.uniforms.bl.value=rtA.texture; renderer.setRenderTarget(null); renderer.render(fsc,fcam);
+  } else { renderer.setRenderTarget(null); renderer.render(scene,cam); }
+  fN++; if(now-fT>1000){ $('fps').textContent=Math.round(fN*1000/(now-fT)); fN=0; fT=now; }
+}
+Object.keys(S).forEach(k=>{ document.querySelectorAll('.seg[data-k="'+k+'"] button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===S[k]?'true':'false')); });
+if(innerWidth<620){ $('sheet').classList.add('min'); $('minbtn').textContent='show'; }
+apply(); requestAnimationFrame(frame);
+window.MOOD={scene,renderer,S,apply};
+})();
+</script>

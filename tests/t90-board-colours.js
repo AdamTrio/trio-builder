@@ -1,0 +1,53 @@
+// t90 — board colours (presets + my own) and the key art leaves with the marquee
+const { chromium } = require('playwright'); const fs=require('fs'), path=require('path');
+const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const p=await ctx.newPage();
+  const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=mood',{waitUntil:'domcontentloaded'});
+  await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(1500);
+  const seg=(lab,v)=>p.evaluate(([lab,v])=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent===lab&&[...x.querySelectorAll('button')].some(y=>y.textContent===v)); [...f.querySelectorAll('button')].find(x=>x.textContent===v).click(); },[lab,v]);
+  await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="boards"]').click()); await p.waitForTimeout(300);
+  const w3=()=>p.evaluate(()=>{ const m=window.HEX.walls[3].material.map; return {keyart:!!(window.HEXCORE.KEYART&&m&&m===window.HEXCORE.KEYART.tex), mood:!!(m&&m.userData&&m.userData.moodTex)}; });
+  let w=await w3(); check(!w.keyart&&w.mood,'fresh Mood Room: wall 3 is plain texture, no key art');
+  await seg('Marquee','on'); await p.waitForTimeout(400); await seg('Key art wall','on'); await p.waitForTimeout(1500);
+  w=await w3(); check(w.keyart,'marquee + key art on: the art fills wall 3');
+  await seg('Marquee','off'); await p.waitForTimeout(800);
+  w=await w3(); check(!w.keyart&&w.mood,'marquee off: the key art goes with it (Adam’s wall 3)');
+  await seg('Marquee','on'); await p.waitForTimeout(400); await seg('Key art wall','off'); await p.waitForTimeout(400);
+  // a picture staged on wall 3 can be removed (Adam's wall)
+  const [fc]=await Promise.all([p.waitForEvent('filechooser'),p.evaluate(()=>{ document.querySelector('#stgRail button[data-tab="walls"]').click();
+    const r=[...document.querySelectorAll('#stg .strow')].find(x=>(x.querySelector('.nm b')||{}).textContent==='Wall 3 · BEHIND YOU'); r.querySelector('button.add').click(); })]);
+  await fc.setFiles(require('path').join(__dirname,'..','setassets','back.jpg')); await p.waitForTimeout(1200);
+  await p.evaluate(()=>{ const r=[...document.querySelectorAll('#stg .strow')].find(x=>(x.querySelector('.nm b')||{}).textContent==='Wall 3 · BEHIND YOU'); if(!r.classList.contains('sel')) r.click(); }); await p.waitForTimeout(500);
+  const had=await w3();
+  await p.evaluate(()=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()==='remove picture').click()); await p.waitForTimeout(600);
+  const gone=await w3(); check(!had.mood&&gone.mood,'wall 3 picture: "remove picture" takes it back to the bare wall');
+  await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="boards"]').click()); await p.waitForTimeout(300);
+  // colours
+  const px=()=>p.evaluate(()=>{ const out={}; ['game','leader','chat'].forEach(k=>{ const r=window.HEXCORE.boardByKind(k); if(!r||!r.canvas) return; const d=r.canvas.getContext('2d').getImageData(Math.floor(r.canvas.width*.5),12,1,1).data; out[k]=[d[0],d[1],d[2]].join(','); }); return out; });
+  await p.evaluate(()=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent==='Leaderboard'||(x.querySelector('label')||{}).textContent==='Live board'); }); 
+  const c0=await px();
+  await seg('Colours','neon'); await p.waitForTimeout(500);
+  const c1=await px();
+  check(c0.game&&c1.game&&c0.game!==c1.game,'neon recolours the marquee ('+c0.game+' → '+c1.game+')');
+  await seg('Colours','my own'); await p.waitForTimeout(300);
+  check(await p.evaluate(()=>['Background','Frame','Titles','Text','Highlight','Small text'].every(l=>[...document.querySelectorAll('#stg .stf label')].some(x=>x.textContent===l))),'my own: six colour pickers');
+  await p.evaluate(()=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent==='Background'); const i=f.querySelector('input'); i.value='#ff0000'; i.dispatchEvent(new Event('input')); }); await p.waitForTimeout(400);
+  const c2=await p.evaluate(()=>{ const r=window.HEXCORE.boardByKind('game'); const d=r.canvas.getContext('2d').getImageData(Math.floor(r.canvas.width*.5),12,1,1).data; return [d[0],d[1],d[2]]; });
+  check(c2[0]>150&&c2[1]<60,'my own background reaches the board ('+c2+')');
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); window.HEX.setYaw(Math.PI); }); await p.waitForTimeout(900);
+  await p.screenshot({path:'shots/t90-boards.png'});
+  const [dl]=await Promise.all([p.waitForEvent('download'),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]);
+  const bp=path.join(__dirname,'..','out','t90.html'); await dl.saveAs(bp);
+  const html=fs.readFileSync(bp,'utf8'); const bake=JSON.parse(html.match(/window\.HEXBAKE=(\{.*?\});<\/script>/s)[1].replace(/\\u003c/g,'<'));
+  check(bake.boards.theme&&bake.boards.theme.preset==='custom'&&bake.boards.theme.panel==='#ff0000','bake carries the board colours');
+  const q=await b.newPage({viewport:{width:1280,height:800}}); const e2=[]; q.on('pageerror',x=>e2.push(String(x)));
+  await q.goto('http://127.0.0.1:8765/out/t90.html',{waitUntil:'domcontentloaded'}); await q.waitForFunction(()=>window.HEX&&window.HEX.ok); await q.waitForTimeout(2500);
+  const c3=await q.evaluate(()=>{ const r=window.HEXCORE.boardByKind('game'); if(!r) return null; const d=r.canvas.getContext('2d').getImageData(Math.floor(r.canvas.width*.5),12,1,1).data; return [d[0],d[1],d[2]]; });
+  check(c3&&c3[0]>150&&c3[1]<60,'published room: boards in my colours ('+c3+')');
+  await q.close();
+  check(errs.length===0&&e2.length===0,'no errors'+((errs[0]||e2[0])?': '+(errs[0]||e2[0]):''));
+  await b.close(); ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(`\n${ok.length}/${ok.length+bad.length}`);
+})();

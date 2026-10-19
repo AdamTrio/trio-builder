@@ -1,0 +1,76 @@
+// t75 — Easter eggs in a set: build in the editor, preview, bake, tap through the window in the published room
+const { chromium } = require('playwright'); const fs=require('fs'), path=require('path');
+const A=f=>path.join(__dirname,'..','setassets',f); const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader','--autoplay-policy=no-user-gesture-required']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const p=await ctx.newPage();
+  const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=room'); await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(1000);
+  const choose=async(fn,f)=>{ const [fc]=await Promise.all([p.waitForEvent('filechooser'),fn()]); await fc.setFiles(f); await p.waitForTimeout(900); };
+  const openSec=t=>p.evaluate(t=>{ const h=[...document.querySelectorAll('#stg .stsec>h4')].find(x=>x.textContent.indexOf(t)>=0); if(h&&h.parentNode.classList.contains('closed')) h.click(); },t);
+  const rowBtn=l=>p.evaluate(l=>[...document.querySelectorAll('#stg .strow')].find(x=>(x.querySelector('.nm b')||{}).textContent===l).querySelector('button.add').click(),l);
+  const btn=(t,last)=>p.evaluate(([t,last])=>{ const L=[...document.querySelectorAll('#stg button')].filter(x=>x.textContent.trim()===t); (last?L[L.length-1]:L[0]).click(); },[t,!!last]);
+  await openSec('2 ·'); await choose(()=>rowBtn('Wall 0 · FRONT'),A('wall-window.png'));
+  await openSec('Windows & sets'); await btn('+ new set'); await p.waitForTimeout(500);
+  await choose(()=>rowBtn('Background'),A('pano.jpg')); await choose(()=>rowBtn('Floor'),A('floor.jpg'));
+  await btn('+ egg spot'); await p.waitForTimeout(500);
+  // fill the spot's pop-up: title + text exist; add a picture and a link
+  await p.evaluate(()=>{ const ins=[...document.querySelectorAll('#stg .stctl input:not([type])'), ...document.querySelectorAll('#stg .stctl input[type=text]')];
+    const t=[...document.querySelectorAll('#stg .stctl input')].find(i=>i.placeholder==='a short title'); t.value='The first amp'; t.dispatchEvent(new Event('input'));
+    const ta=document.querySelector('#stg .stctl textarea'); ta.value='It blew a fuse halfway through the first take <b>and they kept it</b>.'; ta.dispatchEvent(new Event('input')); });
+  await btn('+ picture'); await p.waitForTimeout(300);
+  await choose(()=>p.evaluate(()=>[...document.querySelectorAll('#stg .strow')].find(x=>(x.querySelector('.nm b')||{}).textContent==='a picture').querySelector('button.add').click()),A('back.jpg'));
+  await btn('+ link'); await p.waitForTimeout(300);
+  await p.evaluate(()=>{ const L=[...document.querySelectorAll('#stg .stctl input')]; const w=L.find(i=>i.placeholder==='button words, e.g. hear it'); w.value='hear it'; w.dispatchEvent(new Event('input'));
+    const u=L.find(i=>i.placeholder==='https://…'); u.value='https://triomusic.co'; u.dispatchEvent(new Event('input')); });
+  await p.waitForTimeout(300);
+  const gl=await p.evaluate(()=>window.HEXCORE.GLINTS.filter(s=>s.parent).length);
+  check(gl>=1,'the spot glints in the editor ('+gl+')');
+  await btn('preview pop-up'); await p.waitForTimeout(500);
+  const pv=await p.evaluate(()=>{ const E=document.getElementById('hexEgg'); return {on:E.classList.contains('on'), h:(E.querySelector('h3')||{}).textContent, p:(E.querySelector('p')||{}).innerHTML, img:!!E.querySelector('img'), a:E.querySelector('a.pl')&&[E.querySelector('a.pl').target,E.querySelector('a.pl').textContent]}; });
+  check(pv.on&&pv.h==='The first amp','preview opens the pop-up with the title');
+  check(pv.img,'picture shows on the pop-up');
+  check(pv.a&&pv.a[0]==='_blank'&&pv.a[1]==='hear it','link button opens a new tab');
+  check(/&lt;b&gt;/.test(pv.p||''),'text is shown as text, never as code');
+  await p.screenshot({path:'shots/t75-preview.png'});
+  await p.evaluate(()=>window.HEXCORE.closeEgg()); await p.waitForTimeout(300);
+  check(await p.evaluate(()=>!window.HEXSLEEP), 'closing wakes the room');
+  // model egg toggle exists
+  await choose(()=>btn('+ model (.glb)'),A('model.glb')); await p.waitForTimeout(1500);
+  await p.evaluate(()=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent==='· easter egg'); [...f.querySelectorAll('button')].find(x=>x.textContent==='on').click(); });
+  await p.waitForFunction(()=>{ const g=window.HEX.scene.children.find(o=>o.userData.isSet&&o.position.y<-100); return g&&g.userData.eggs.length>=2; },null,{timeout:15000}).catch(()=>{});
+  const eg=await p.evaluate(()=>{ const g=window.HEX.scene.children.find(o=>o.userData.isSet&&o.position.y<-100); return g.userData.eggs.length; });
+  check(eg===2,'model egg + spot egg both live ('+eg+')');
+  await btn('done & lock'); await p.waitForTimeout(500); await openSec('Windows & sets');
+  await p.evaluate(()=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent==='Wall 0 window'); [...f.querySelectorAll('button')].find(x=>x.textContent==='on').click(); });
+  await p.waitForTimeout(1500);
+  const [dl]=await Promise.all([p.waitForEvent('download'),btn('publish room')]);
+  const bp=path.join(__dirname,'..','out','t75-baked.html'); await dl.saveAs(bp);
+  const html=fs.readFileSync(bp,'utf8'); const bake=JSON.parse(html.match(/window\.HEXBAKE=(\{.*?\});<\/script>/s)[1].replace(/\\u003c/g,'<'));
+  const S=bake.sets[0]; check(S.spots.length===1&&S.spots[0].egg.blocks.some(x=>x.t==='image'&&bake.assets[x.asset]),'bake carries the egg and its picture');
+  // published room: walk up, tap the glint
+  const q=await b.newPage({viewport:{width:420,height:860}}); const e2=[]; q.on('pageerror',e=>e2.push(String(e)));
+  const posts=[]; await q.exposeFunction('__post',m=>posts.push(m));
+  await q.goto('http://127.0.0.1:8765/out/t75-baked.html'); await q.waitForFunction(()=>window.HEX&&window.HEX.ok); await q.waitForTimeout(2500);
+  await q.evaluate(()=>window.HEX.enterRoom&&window.HEX.enterRoom()); await q.waitForTimeout(1200);
+  const sp=await q.evaluate(()=>{ const T=window.THREE,H=window.HEX,N=window.HEXCORE.NAV; if(N){ N.pos.x=0; N.pos.z=-2.5; N.pos.init=true; } H.setYaw(0);
+    return true; }); await q.waitForTimeout(800);
+  const pt=await q.evaluate(()=>{ const T=window.THREE,H=window.HEX; const G=window.HEXCORE.WINSETS[0]; const E=G.userData.eggs.find(e=>e.id.indexOf(':p:')>0);
+    const w=new T.Vector3(); E.obj.getWorldPosition(w); H.cam.updateMatrixWorld(); const v=w.project(H.cam); return {x:(v.x+1)/2*innerWidth,y:(1-v.y)/2*innerHeight,z:v.z,n:G.userData.eggs.length}; });
+  await q.screenshot({path:'shots/t75-room-glint.png'});
+  await q.mouse.click(pt.x,pt.y); await q.waitForTimeout(700);
+  const op=await q.evaluate(()=>{ const E=document.getElementById('hexEgg'); return {on:!!E&&E.classList.contains('on'), k:E&&E.querySelector('.k').textContent, h:E&&(E.querySelector('h3')||{}).textContent, img:E&&E.querySelector('img')&&E.querySelector('img').naturalWidth, sleep:!!window.HEXSLEEP}; });
+  check(op.on&&op.h==='The first amp','published room: tapping the glint through the window opens the pop-up');
+  check(op.img>0,'published room: the picture loads');
+  check(/1 of 2 found/.test(op.k||''),'counter: '+op.k);
+  check(op.sleep,'room sleeps under the pop-up');
+  await q.screenshot({path:'shots/t75-room-popup.png'});
+  await q.click('#hexEgg button.pl.g'); await q.waitForTimeout(400);
+  check(await q.evaluate(()=>!document.getElementById('hexEgg').classList.contains('on')&&!window.HEXSLEEP),'back to the room closes it, room awake');
+  // a tap on the solid wall beside the window does nothing
+  await q.mouse.click(30,pt.y); await q.waitForTimeout(400);
+  check(await q.evaluate(()=>!document.getElementById('hexEgg').classList.contains('on')),'tapping the wall opens nothing');
+  check(e2.length===0,'published room: no errors'+(e2[0]?': '+e2[0]:''));
+  check(errs.length===0,'builder: no errors'+(errs[0]?': '+errs[0]:''));
+  await b.close(); ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(`\n${ok.length}/${ok.length+bad.length}`);
+})();

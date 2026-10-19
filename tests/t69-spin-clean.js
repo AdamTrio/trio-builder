@@ -1,0 +1,11 @@
+const { chromium } = require('playwright');
+(async () => { const b = await chromium.launch({ args: ['--use-gl=swiftshader','--enable-unsafe-swiftshader'] });
+  const p = await b.newPage({ viewport: { width: 1280, height: 800 } }); const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=event'); await p.waitForFunction(()=>window.HEX&&window.HEX.ok); await p.waitForTimeout(3500);
+  await p.evaluate(()=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()==='hide').click());
+  const vis = () => p.evaluate(()=>['hexNav','spinhint','stgBtn','stgMode','hexSpin'].map(id=>{ const n=document.getElementById(id); if(!n) return id+':none'; const cs=getComputedStyle(n); return id+':'+(cs.display!=='none'&&cs.visibility!=='hidden'?'shown':'hidden'); }).join(' '));
+  console.log('before :', await vis());
+  await p.evaluate(()=>document.getElementById('hexSpin').click()); await p.waitForTimeout(1500);
+  console.log('spinning:', await vis()); await p.screenshot({ path: '/mnt/user-data/outputs/spin-clean-screen.png' });
+  await p.evaluate(()=>document.getElementById('hexSpin').click()); await p.waitForTimeout(500);
+  console.log('stopped:', await vis(), 'errors', errs.length); await b.close(); })();

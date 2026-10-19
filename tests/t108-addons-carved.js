@@ -1,0 +1,67 @@
+// t108 — v63: the Add-ons drawer + the first add-on, Carved line; a bake only carries add-ons it uses
+const { chromium } = require('playwright'); const path=require('path'); const fs=require('fs');
+const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true});
+  const errs=[];
+  const open=async q=>{ const p=await ctx.newPage(); p.on('pageerror',e=>errs.push(String(e)));
+    await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html'+q,{waitUntil:'domcontentloaded'});
+    await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec'),null,{timeout:90000}); await p.waitForTimeout(2500); return p; };
+  const railHas=p=>p.evaluate(()=>{ const b=document.querySelector('#stgRail button[data-tab="addons"]'); return !!b&&b.style.display!=='none'; });
+  // Event Space: no drawer
+  let e=await open('?space=event'); check(!(await railHas(e)),'Event Space: no add-ons tab'); await e.close();
+  const p=await open('?space=mood');
+  check(await railHas(p),'Mood Room: add-ons tab on the rail');
+  await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="addons"]').click()); await p.waitForTimeout(500);
+  const card=await p.evaluate(()=>[...document.querySelectorAll('#stg .stcard b')].map(x=>x.firstChild.textContent));
+  check(card[0]==='Carved line','drawer lists "Carved line" ('+card.join(', ')+')');
+  const before=await p.evaluate(()=>window.HEX.walls.map(w=>w.geometry.attributes.position.count+'@'+w.position.toArray().map(v=>v.toFixed(2)).join(',')).join('|'));
+  check(await p.evaluate(()=>!window.HEX._carved),'off by default: nothing built');
+  const spots=()=>p.evaluate(()=>{ const o={}; window.HEX.scene.children.forEach(c=>{ o[c.uuid]=c.position.toArray().map(v=>+v.toFixed(3)).join(','); }); return o; });
+  const spot0=await spots();
+  await p.evaluate(()=>document.querySelector('#stg .sttog').click()); await p.waitForTimeout(1500);
+  const st=()=>p.evaluate(()=>{ const X=window.HEX._carved; return X?{parts:X.parts.length, lights:X.lights.length, same:X.parts.filter(o=>o.userData.carved).every(o=>o.material===o.parent.material), key:X.key}:null; });
+  let s=await st(); check(s&&s.parts===24&&s.lights===6&&s.same,'on: a carved band + neon on all six walls, wearing each wall\'s own material ('+JSON.stringify(s)+')');
+  const after=await p.evaluate(()=>window.HEX.walls.map(w=>w.geometry.attributes.position.count+'@'+w.position.toArray().map(v=>v.toFixed(2)).join(',')).join('|'));
+  check(before===after,'the room keeps its shape (walls untouched)');
+  await p.waitForTimeout(1500);
+  const spot1=await spots(), moved=await p.evaluate(ids=>ids.filter(id=>{ const o=window.HEX.scene.getObjectByProperty('uuid',id); return o&&o.userData._cvP; }),Object.keys(spot0).filter(k=>spot1[k]&&spot1[k]!==spot0[k]));
+  const front=await p.evaluate(ids=>{ const H=window.HEX; return ids.map(id=>H.scene.getObjectByProperty('uuid',id)).filter(o=>o&&o.userData._cvB).every(o=>{ const d=o.position.clone().sub(o.userData._cvB); return d.length()>.02&&d.length()<1.2; }); },moved);
+  check(moved.length>0&&front,'photo / video tiles on carved walls float out over the carve ('+moved.length+' moved)');
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); window.HEX.setYaw(0.3); }); await p.waitForTimeout(1500);
+  await p.screenshot({path:path.join(__dirname,'..','out','t108-hung.png')});
+  await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="addons"]').click()); await p.waitForTimeout(400);
+  const labs=await p.evaluate(()=>[...document.querySelectorAll('#stg .stcard .stf label')].map(x=>x.textContent));
+  check(['Height','Wave','Depth','Neon colour','Neon glow','With music'].every(l=>labs.includes(l)),'dials: Height, Wave, Depth, Neon colour, Neon glow, With music');
+  const k0=s.key;
+  await p.evaluate(()=>{ const f=[...document.querySelectorAll('#stg .stcard .stf')].find(x=>x.querySelector('label').textContent==='Depth'); const i=f.querySelector('input'); i.value=.9; i.dispatchEvent(new Event('input')); }); await p.waitForTimeout(800);
+  s=await st(); check(s&&s.key!==k0&&s.parts===24,'Depth slider re-carves the channel');
+  const g=await p.evaluate(async()=>{ const X=window.HEX._carved, m=X.glowMats[0]; const a=m.color.r; await new Promise(r=>setTimeout(r,900)); return [a,m.color.r]; });
+  check(Math.abs(g[0]-g[1])>.01,'pulses: the neon breathes even with no music ('+g.map(v=>v.toFixed(2))+')');
+  // bake with it on
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); }); await p.waitForTimeout(400);
+  let [dl]=await Promise.all([p.waitForEvent('download',{timeout:120000}),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]);
+  const on=path.join(__dirname,'..','out','t108-on.html'); await dl.saveAs(on);
+  check(fs.readFileSync(on,'utf8').includes('data-addon="carved"'),'bake (on): the room carries the Carved line file');
+  // turn it off and bake again
+  await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="addons"]').click()); await p.waitForTimeout(400);
+  await p.evaluate(()=>document.querySelector('#stg .sttog').click()); await p.waitForTimeout(800);
+  check(await p.evaluate(()=>!window.HEX._carved&&!window.HEX.walls.some(w=>w.children.some(c=>c.userData.carved))),'off again: all of it removed');
+  const spot2=await spots(); check(moved.every(k=>spot2[k]===spot0[k]),'off again: every tile back in its own spot');
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); }); await p.waitForTimeout(400);
+  [dl]=await Promise.all([p.waitForEvent('download',{timeout:120000}),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]);
+  const off=path.join(__dirname,'..','out','t108-off.html'); await dl.saveAs(off);
+  check(!fs.readFileSync(off,'utf8').includes('data-addon="carved"'),'bake (off): the add-on file is left out');
+  await p.close();
+  const q=await ctx.newPage(); q.on('pageerror',x=>errs.push('pub: '+x));
+  await q.goto('http://127.0.0.1:8765/out/t108-on.html',{waitUntil:'domcontentloaded',timeout:120000}); await q.waitForFunction(()=>window.HEX&&window.HEX.ok,null,{timeout:120000}); await q.waitForTimeout(4000);
+  const pub=await q.evaluate(()=>{ const X=window.HEX._carved; return X?{parts:X.parts.length, depth:X.c.depth}:null; });
+  check(pub&&pub.parts===24&&Math.abs(pub.depth-.9)<.01,'published room: the carved line is there, same settings ('+JSON.stringify(pub)+')');
+  await q.close();
+  const o=await open('?space=open'); await o.evaluate(()=>document.querySelector('#stgRail button[data-tab="addons"]').click()); await o.waitForTimeout(400);
+  await o.evaluate(()=>document.querySelector('#stg .sttog').click()); await o.waitForTimeout(1000);
+  check(await o.evaluate(()=>!window.HEX._carved&&/no walls to carve/.test(document.querySelector('#stg .stcard').textContent)),'Open Space: says it needs walls, builds nothing');
+  check(!errs.length,'no errors '+errs.join(' | '));
+  ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(ok.length+'/'+(ok.length+bad.length)); await b.close();
+})();

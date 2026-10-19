@@ -1,0 +1,22 @@
+// t118 — v69.1: with the Carved line on, the chat board / game boards sit the same distance off the wall as the photo + video tiles (they flew ~3 m out)
+const { chromium } = require('playwright'); const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{ const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']}); const p=await b.newPage({viewport:{width:1280,height:800}});
+  p.on('pageerror',e=>console.log('ERR',e.message));
+  await p.goto('http://127.0.0.1:8765/'+(process.argv[2]||'dist/trio-builder-admin.html')+'?space=mood',{waitUntil:'domcontentloaded'}); await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(2000);
+  const seg=(lab,v)=>p.evaluate(([lab,v])=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent===lab&&[...x.querySelectorAll('button')].some(y=>y.textContent===v)); [...f.querySelectorAll('button')].find(x=>x.textContent===v).click(); },[lab,v]);
+  const tab=t=>p.evaluate(t=>{ const b=document.querySelector('#stgRail button[data-tab="'+t+'"]'); if(b.getAttribute('aria-pressed')!=='true') b.click(); },t);
+  await tab('boards'); await p.waitForTimeout(300); await seg('Chat board','on'); await p.waitForTimeout(800);
+  const meas=()=>p.evaluate(()=>{ return null; });
+  const offs=()=>p.evaluate(()=>{ const H=window.HEX, v=new THREE.Vector3(), r={board:[],tiles:[]};
+    H.scene.children.forEach(o=>{ const isB=!!o.userData.isBoard, isT=o.isGroup&&o.children.length&&!o.userData.isSet&&!o.userData.beams&&!o.userData.isProp; if(!isB&&!isT) return;
+      let best=1e9; H.walls.forEach(w=>{ v.copy(o.position); w.worldToLocal(v); if(Math.abs(v.x)<=w.geometry.parameters.width/2+.2&&v.z>-.1&&v.z<best) best=v.z; });
+      if(best<3) (isB?r.board:r.tiles).push(+best.toFixed(2)); }); return r; });
+  const meas0=()=>p.evaluate(()=>{ const H=window.HEX, out=[]; const v=new THREE.Vector3();
+    H.scene.children.forEach(o=>{ const kind=o.userData.isBoard?'board:'+o.userData.boardKind:(o.userData._cvB!==undefined||o.type==='Group'?null:null); if(!o.userData.isBoard&&!(o.isGroup&&o.children.length&&!o.userData.isSet&&!o.userData.beams&&!o.userData.isProp)) return;
+      let best=1e9, wi=-1; H.walls.forEach((w,i)=>{ v.copy(o.position); w.worldToLocal(v); if(Math.abs(v.x)<=w.geometry.parameters.width/2+.2&&v.z>-.1&&v.z<best){ best=v.z; wi=i; } });
+      if(wi>=0&&best<9) out.push((o.userData.isBoard?'BOARD ':'group ')+wi+' off='+best.toFixed(2)); }); return out.join(' | '); });
+  let o0=await offs(); check(o0.board.length===1&&Math.abs(o0.board[0]-Math.max(...o0.tiles))<.05,'no carve: board and tiles sit the same distance off the wall ('+JSON.stringify(o0)+')');
+  await tab('addons'); await p.waitForTimeout(300);
+  await p.evaluate(()=>{ const c=[...document.querySelectorAll('#stg .stcard')].find(x=>x.querySelector('b')&&x.querySelector('b').firstChild.textContent==='Carved line'); c.querySelector('.sttog').click(); }); await p.waitForTimeout(2500);
+  await p.waitForTimeout(2000); const o1=await offs(); check(o1.board.length===1&&o1.board[0]<.8&&Math.abs(o1.board[0]-Math.max(...o1.tiles))<.06,'carved line on: the board floats out just like the tiles — not metres off ('+JSON.stringify(o1)+')');
+  ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(ok.length+'/'+(ok.length+bad.length)); await b.close(); })();

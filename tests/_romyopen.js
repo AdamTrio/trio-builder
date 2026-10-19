@@ -1,0 +1,13 @@
+const { chromium } = require('playwright');
+(async () => { const b = await chromium.launch({ args: ['--use-gl=swiftshader','--enable-unsafe-swiftshader'] });
+  const p = await b.newPage({ viewport: { width: 1280, height: 800 } }); const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=event'); await p.waitForFunction(()=>window.HEX&&window.HEX.ok); await p.waitForTimeout(3500);
+  const [fc] = await Promise.all([p.waitForEvent('filechooser'), p.evaluate(()=>[...document.querySelectorAll('#stg button')].find(x=>/open project/.test(x.textContent)).click())]);
+  await fc.setFiles('romy/death-by-romy.hexlook.json'); await p.waitForTimeout(5000);
+  const tip = await p.evaluate(()=>{ const t=document.getElementById('stgTip'); return t&&t.textContent; });
+  const r = await p.evaluate(()=>window.HEX.walls.map(w=>!!(w.material.map&&w.material.map.image&&w.material.map.image.width>1000)));
+  console.log('tip:', tip, '| walls textured:', JSON.stringify(r), '| errors', errs.length, errs.slice(0,2));
+  await p.evaluate(()=>{ const s=document.getElementById('stg'); s.classList.remove('open'); });
+  await p.waitForTimeout(800); await p.screenshot({ path: '/mnt/user-data/outputs/romy-room-reopened.png' });
+  await p.evaluate(()=>window.HEX.setYaw(Math.PI)); await p.waitForTimeout(800); await p.screenshot({ path: 'shots/romy-back.png' });
+  await b.close(); })();

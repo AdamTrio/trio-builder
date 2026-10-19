@@ -1,0 +1,207 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Trio · Kit Lab v1</title>
+<style>
+html,body{margin:0;height:100%;background:#07070c;color:#efeaff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+#bar{position:fixed;top:12px;left:12px;right:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;pointer-events:none}
+#bar>*{pointer-events:auto}
+#bar b{font:800 14px sans-serif;letter-spacing:.16em;margin-right:4px}
+.seg{display:flex;background:rgba(16,15,26,.88);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:3px}
+.seg button{background:none;border:0;color:#bdb6dd;font:700 12px sans-serif;padding:7px 12px;border-radius:999px;cursor:pointer}
+.seg button.on{background:#efeaff;color:#0b0a12}
+#note{position:fixed;left:12px;bottom:calc(14px + env(safe-area-inset-bottom));max-width:380px;background:rgba(16,15,26,.88);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:10px 14px;font:12px/1.5 sans-serif;color:#bdb6dd}
+#note b{color:#fff}
+#joy{position:fixed;right:22px;bottom:calc(22px + env(safe-area-inset-bottom));width:116px;height:116px;border-radius:50%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2);display:none}
+#knob{position:absolute;left:36px;top:36px;width:44px;height:44px;border-radius:50%;background:rgba(190,170,255,.85)}
+body.walk #joy{display:block}
+@media(max-width:700px){#note{display:none}.seg button{padding:6px 9px;font-size:11px}}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="bar"><b>KIT LAB</b>
+  <div class="seg" data-k="ver"><button data-v="old">old</button><button data-v="new" class="on">new</button></div>
+  <div class="seg" data-k="time"><button data-v="day">day</button><button data-v="night" class="on">night</button></div>
+  <div class="seg" data-k="glow"><button data-v="on" class="on">glow on</button><button data-v="off">off</button></div>
+  <div class="seg" data-k="wet"><button data-v="dry" class="on">dry</button><button data-v="wet">wet street</button></div>
+  <div class="seg" data-k="view"><button data-v="over" class="on">overview</button><button data-v="road">road</button><button data-v="forest">forest</button><button data-v="walk">walk</button></div>
+</div>
+<div id="note"><b>Two pieces, room-quality textures:</b> Road straight (×3) between Light forest pieces. Same colour + bumps + shine as the room walls and floors.
+Drag to turn around · wheel / pinch to zoom · <b>walk</b> = street level (joystick, arrows or W A S D).</div>
+<div id="joy"><div id="knob"></div></div>
+<script>/*THREE*/</script>
+<script>
+const TEX={/*TEX*/};
+const T=THREE, SQ=16;
+const R=new T.WebGLRenderer({canvas:document.getElementById('c'),antialias:true}); R.setPixelRatio(Math.min(devicePixelRatio,2));
+R.outputColorSpace=T.SRGBColorSpace; R.toneMapping=T.ACESFilmicToneMapping; R.toneMappingExposure=1.1;
+const S=new T.Scene(); const cam=new T.PerspectiveCamera(55,1,.05,900);
+const ST={ver:'new',time:'night',glow:'on',wet:'dry',view:'over'};
+
+/* ---------- textures ---------- */
+const TL=new T.TextureLoader(), maxA=R.capabilities.getMaxAnisotropy();
+const tex=(k,srgb)=>{ const t=TL.load(TEX[k]); t.wrapS=t.wrapT=T.RepeatWrapping; t.anisotropy=Math.min(8,maxA); if(srgb) t.colorSpace=T.SRGBColorSpace; return t; };
+const P={asphalt:{map:tex('asphalt_col',1),normalMap:tex('asphalt_nrm'),roughnessMap:tex('asphalt_rgh')},
+  slab:{map:tex('slab_col',1),normalMap:tex('slab_nrm'),roughnessMap:tex('slab_rgh')},
+  curb:{map:tex('curb_col',1),normalMap:tex('curb_nrm')},
+  ground:{map:tex('ground_col',1),normalMap:tex('ground_nrm'),roughnessMap:tex('ground_rgh')},
+  bark:{map:tex('bark_col',1),normalMap:tex('bark_nrm')}, rock:{map:tex('rock_col',1),normalMap:tex('rock_nrm')}};
+const leavesT=tex('leaves',1), tuftT=tex('tuft',1), paintT=tex('paint',1);
+/* UVs in metres: tile = how many metres one copy of the texture covers */
+function uvm(g,w,d,tile){ const uv=g.attributes.uv; for(let i=0;i<uv.count;i++) uv.setXY(i,uv.getX(i)*w/tile,uv.getY(i)*d/tile); return g; }
+function plane(w,d,tile){ const g=new T.PlaneGeometry(w,d); g.rotateX(-Math.PI/2); return uvm(g,w,d,tile); }
+
+/* ---------- materials (new) ---------- */
+const MAT={
+  asphalt:new T.MeshStandardMaterial(Object.assign({roughness:1,metalness:0},P.asphalt)),
+  slab:new T.MeshStandardMaterial(Object.assign({roughness:1},P.slab)),
+  curb:new T.MeshStandardMaterial(Object.assign({roughness:.8},P.curb)),
+  ground:new T.MeshStandardMaterial(Object.assign({roughness:1},P.ground)),
+  bark:new T.MeshStandardMaterial(Object.assign({roughness:.95},P.bark)),
+  rock:new T.MeshStandardMaterial(Object.assign({roughness:.9},P.rock)),
+  leaves:new T.MeshStandardMaterial({map:leavesT,alphaTest:.5,side:T.DoubleSide,roughness:.8}),
+  tuft:new T.MeshStandardMaterial({map:tuftT,alphaTest:.4,side:T.DoubleSide,roughness:.9}),
+  paint:new T.MeshStandardMaterial({map:paintT,transparent:true,roughness:.7,polygonOffset:true,polygonOffsetFactor:-2,depthWrite:false}),
+  pole:new T.MeshStandardMaterial({color:0x22232a,metalness:.85,roughness:.38}),
+  glass:new T.MeshStandardMaterial({color:0xfff2d6,emissive:0xffcf8a,emissiveIntensity:3,roughness:.2,toneMapped:false}),
+  iron:new T.MeshStandardMaterial({color:0x2a2a2e,metalness:.7,roughness:.55})};
+[P.slab.map,P.slab.normalMap,P.slab.roughnessMap].forEach(t=>t.repeat.set(1,1));
+
+/* ---------- the new road piece ---------- */
+const lamps=[];
+function lamp(g,x,z,face){ const L=new T.Group(); L.position.set(x,0,z);
+  const pole=new T.Mesh(new T.CylinderGeometry(.07,.11,5.4,14),MAT.pole); pole.position.y=2.7; L.add(pole);
+  const base=new T.Mesh(new T.CylinderGeometry(.16,.2,.4,14),MAT.pole); base.position.y=.2; L.add(base);
+  const arm=new T.Mesh(new T.CylinderGeometry(.04,.04,1.3,8),MAT.pole); arm.rotation.z=Math.PI/2; arm.position.set(.6*face,5.3,0); L.add(arm);
+  const hood=new T.Mesh(new T.CylinderGeometry(.12,.38,.28,18,1,true),MAT.pole); hood.position.set(1.2*face,5.24,0); L.add(hood);
+  const bulb=new T.Mesh(new T.SphereGeometry(.17,16,10),MAT.glass); bulb.position.set(1.2*face,5.08,0); L.add(bulb);
+  const halo=new T.Sprite(new T.SpriteMaterial({map:haloTex(),color:0xffc887,transparent:true,blending:T.AdditiveBlending,depthWrite:false})); halo.scale.setScalar(2.6); halo.position.copy(bulb.position); L.add(halo);
+  const pl=new T.PointLight(0xffd29a,0,20,2); pl.position.set(1.2*face,4.9,0); L.add(pl);
+  lamps.push({pl,halo}); g.add(L); }
+function roadNew(){ const g=new T.Group();
+  const a=new T.Mesh(plane(10,SQ,4),MAT.asphalt); a.position.y=-.15; g.add(a);
+  [-1,1].forEach(s=>{ const sw=new T.Mesh(plane(3,SQ,3),MAT.slab); sw.position.set(s*6.5,0,0); g.add(sw);
+    const cb=new T.Mesh(uvm(new T.BoxGeometry(.26,.17,SQ),1,SQ,1.2),MAT.curb); cb.position.set(s*5.13,-.075,0); g.add(cb);
+    const ed=new T.Mesh(uvm(new T.BoxGeometry(.22,.05,SQ),1,SQ,1.2),MAT.curb); ed.position.set(s*7.89,.02,0); g.add(ed);
+    const el=new T.Mesh(uvm(plane(.14,SQ,1),1,1,1),MAT.paint); el.position.set(s*4.55,-.148,0); g.add(el);
+    lamp(g,s*6.9,0,-s); });
+  for(let k=0;k<4;k++){ const d=new T.Mesh(plane(.15,2.2,1),MAT.paint); d.position.set(0,-.147,-6+k*4); g.add(d); }
+  const mh=new T.Mesh(new T.CylinderGeometry(.42,.42,.03,24),MAT.iron); mh.position.set(2.4,-.14,3.2); g.add(mh);
+  const mr=new T.Mesh(new T.TorusGeometry(.42,.035,6,24),MAT.iron); mr.rotation.x=Math.PI/2; mr.position.set(2.4,-.135,3.2); g.add(mr);
+  const gr=new T.Mesh(new T.BoxGeometry(.5,.03,.9),MAT.iron); gr.position.set(-4.62,-.14,-5); g.add(gr);
+  return g; }
+
+/* ---------- the new forest piece ---------- */
+let seed=3; const rnd=()=>{ seed=(seed*16807)%2147483647; return seed/2147483647; };
+function canopyGeo(n,rx,ry,cy){ const cards=[]; const up=new T.Vector3();
+  for(let i=0;i<n;i++){ const g=new T.PlaneGeometry(1.5,1.5); const th=rnd()*Math.PI*2, ph=Math.acos(rnd()*2-1);
+    const p=new T.Vector3(Math.sin(ph)*Math.cos(th)*rx,Math.cos(ph)*ry*.85,Math.sin(ph)*Math.sin(th)*rx);
+    const m=new T.Matrix4().lookAt(new T.Vector3(),new T.Vector3(rnd()-.5,rnd()-.5,rnd()-.5).normalize(),new T.Vector3(0,1,0)); m.setPosition(p.x,p.y+cy,p.z); g.applyMatrix4(m);
+    const nrm=g.attributes.normal, pos=g.attributes.position;   /* leaves light like one soft round crown */
+    for(let k=0;k<nrm.count;k++){ up.set(pos.getX(k),pos.getY(k)-cy,pos.getZ(k)).normalize(); nrm.setXYZ(k,up.x,up.y*.8+.2,up.z); }
+    cards.push(g); }
+  return merge(cards); }
+function merge(list){ let n=0; list.forEach(g=>{ if(g.index) n+=g.index.count; }); const geo=new T.BufferGeometry();
+  const pos=[],nor=[],uv=[]; list.forEach(g=>{ const G=g.index?g.toNonIndexed():g; pos.push(...G.attributes.position.array); nor.push(...G.attributes.normal.array); uv.push(...G.attributes.uv.array); });
+  geo.setAttribute('position',new T.Float32BufferAttribute(pos,3)); geo.setAttribute('normal',new T.Float32BufferAttribute(nor,3)); geo.setAttribute('uv',new T.Float32BufferAttribute(uv,2)); return geo; }
+function treeNew(g,x,z,s){ const t=new T.Group(); t.position.set(x,0,z); t.scale.setScalar(s); t.rotation.y=rnd()*6.28;
+  const tr=new T.Mesh(uvm(new T.CylinderGeometry(.13,.24,5.2,10),1,1,.5),MAT.bark); tr.position.y=2.6; t.add(tr);
+  for(let k=0;k<3;k++){ const b=new T.Mesh(uvm(new T.CylinderGeometry(.04,.08,1.6,6),1,1,.5),MAT.bark); const a=k*2.1+rnd(); b.position.set(Math.cos(a)*.45,3.6+k*.45,Math.sin(a)*.45); b.rotation.set(Math.sin(a)*.9,0,-Math.cos(a)*.9); t.add(b); }
+  const crown=new T.Mesh(canopyGeo(70,2.0,1.8,5.6),MAT.leaves); t.add(crown);
+  const c2=new T.Mesh(canopyGeo(26,1.3,1.1,7.1),MAT.leaves); t.add(c2);
+  const sh=new T.Mesh(new T.CircleGeometry(2.4,24),shadowM()); sh.rotation.x=-Math.PI/2; sh.position.y=.012; t.add(sh);
+  g.add(t); }
+function bushNew(g,x,z,s){ const b=new T.Mesh(canopyGeo(26,.95*s,.55*s,.6*s),MAT.leaves); b.position.set(x,0,z); g.add(b); }
+function rockNew(g,x,z,s){ const geo=new T.IcosahedronGeometry(.6*s,2); const p=geo.attributes.position; for(let i=0;i<p.count;i++){ const k=.8+rnd()*.35; p.setXYZ(i,p.getX(i)*k,p.getY(i)*k*.7,p.getZ(i)*k); } geo.computeVertexNormals();
+  const r=new T.Mesh(geo,MAT.rock); r.position.set(x,.15*s,z); r.rotation.y=rnd()*6; g.add(r); }
+function tufts(g,n){ const cards=[]; for(let i=0;i<n;i++){ const x=(rnd()-.5)*15, z=(rnd()-.5)*15, s=.5+rnd()*.5, a=rnd()*3;
+    for(let k=0;k<2;k++){ const q=new T.PlaneGeometry(.9*s,.9*s); q.translate(0,.45*s,0); q.rotateY(a+k*Math.PI/2); q.translate(x,0,z); cards.push(q); } }
+  g.add(new T.Mesh(merge(cards),MAT.tuft)); }
+function forestNew(){ seed=7; const g=new T.Group();
+  g.add(new T.Mesh(plane(SQ,SQ,8),MAT.ground));
+  [[-4.5,-4],[3.5,-5],[5,2.5],[-3,4.5],[.5,.5],[-6,.5]].forEach(([x,z])=>treeNew(g,x,z,.9+rnd()*.3));
+  bushNew(g,2,5.5,1); bushNew(g,-1,-6,.9); bushNew(g,6.4,-1.5,.8);
+  rockNew(g,4,-2,1); rockNew(g,-5.6,5.6,1.4); rockNew(g,-1.5,2.8,.7);
+  tufts(g,60); return g; }
+let SHM=null; function shadowM(){ if(SHM) return SHM; const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d'); const r=x.createRadialGradient(64,64,4,64,64,64); r.addColorStop(0,'rgba(0,0,0,.55)'); r.addColorStop(1,'rgba(0,0,0,0)'); x.fillStyle=r; x.fillRect(0,0,128,128);
+  return SHM=new T.MeshBasicMaterial({map:new T.CanvasTexture(c),transparent:true,depthWrite:false}); }
+let HT=null; function haloTex(){ if(HT) return HT; const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d'); const r=x.createRadialGradient(64,64,0,64,64,64); r.addColorStop(0,'rgba(255,255,255,1)'); r.addColorStop(.25,'rgba(255,255,255,.35)'); r.addColorStop(1,'rgba(255,255,255,0)'); x.fillStyle=r; x.fillRect(0,0,128,128); return HT=new T.CanvasTexture(c); }
+
+/* ---------- the old stand-ins (what's in the builder today) ---------- */
+const OM=(c,o)=>new T.MeshStandardMaterial(Object.assign({color:c,roughness:.9},o||{}));
+const OLD={walk:OM(0x8c8a94),road:OM(0x2b2a31),line:new T.MeshBasicMaterial({color:0xe9e2b0}),grass:OM(0x3c6b3a),trunk:OM(0x4a3424),leaf:OM(0x2f5e33),leaf2:OM(0x3f7a3a),bush:OM(0x3b6d36),pole:OM(0x1c1b22,{metalness:.6,roughness:.4}),lamp:new T.MeshBasicMaterial({color:0xffe2a6})};
+const box=(g,w,h,d,m,x,y,z)=>{ const o=new T.Mesh(new T.BoxGeometry(w,h,d),m); o.position.set(x,y,z); g.add(o); };
+function roadOld(){ const g=new T.Group(); box(g,SQ,.1,SQ,OLD.walk,0,-.05,0); box(g,10,.12,SQ,OLD.road,0,0,0); for(let k=0;k<4;k++) box(g,.18,.02,1.4,OLD.line,0,.07,-6+k*4);
+  [-1,1].forEach(s=>{ const p=new T.Mesh(new T.CylinderGeometry(.07,.1,5,6),OLD.pole); p.position.set(s*6.5,2.5,0); g.add(p); const h=new T.Mesh(new T.SphereGeometry(.28,10,8),OLD.lamp); h.position.set(s*6.5,5.05,0); g.add(h); }); return g; }
+function treeOld(g,x,z,s,alt){ const t=new T.Mesh(new T.CylinderGeometry(.18*s,.25*s,2*s,6),OLD.trunk); t.position.set(x,s,z); g.add(t);
+  [[1.6,3.6,3.4],[1.2,2.6,4.8]].forEach(([r,h,y])=>{ const c=new T.Mesh(new T.ConeGeometry(r*s,h*s,7),alt?OLD.leaf2:OLD.leaf); c.position.set(x,y*s,z); g.add(c); }); }
+function forestOld(){ seed=7; const g=new T.Group(); box(g,SQ,.1,SQ,OLD.grass,0,-.05,0); [[-4.5,-4],[3.5,-5],[5,2.5],[-3,4.5],[.5,.5],[-6,.5]].forEach(([x,z],i)=>treeOld(g,x,z,1+rnd()*.25,i%2));
+  [[2,5.5],[-1,-6]].forEach(([x,z])=>{ const b=new T.Mesh(new T.IcosahedronGeometry(.9,0),OLD.bush); b.position.set(x,.55,z); b.scale.y=.7; g.add(b); }); return g; }
+
+/* ---------- the test strip: forest | road | forest, three squares deep ---------- */
+const strip=new T.Group(); S.add(strip);
+const under=new T.Mesh(new T.BoxGeometry(SQ*3+1,1,SQ*3+1),new T.MeshStandardMaterial({color:0x111016})); under.position.y=-.66; S.add(under);
+function layout(){ while(strip.children.length) strip.remove(strip.children[0]); lamps.length=0;
+  for(let r=-1;r<=1;r++){ [-1,0,1].forEach(c=>{ const p=c===0?(ST.ver==='new'?roadNew():roadOld()):(ST.ver==='new'?forestNew():forestOld()); p.position.set(c*SQ,0,r*SQ); if(c!==0) p.rotation.y=(r+c)*Math.PI/2; strip.add(p); }); }
+  apply(); }
+
+/* ---------- sky, light, reflections ---------- */
+const hemi=new T.HemisphereLight(0xffffff,0x334422,1); S.add(hemi);
+const sun=new T.DirectionalLight(0xffffff,1); sun.position.set(-40,60,25); S.add(sun);
+const skyM=new T.ShaderMaterial({side:T.BackSide,depthWrite:false,uniforms:{top:{value:new T.Color()},hor:{value:new T.Color()}},
+  vertexShader:'varying vec3 p;void main(){p=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+  fragmentShader:'uniform vec3 top,hor;varying vec3 p;void main(){gl_FragColor=vec4(mix(hor,top,pow(clamp(p.y,0.,1.),.55)),1.);}'});
+const sky=new T.Mesh(new T.SphereGeometry(600,32,16),skyM); S.add(sky);
+const stars=(()=>{ const v=[]; for(let i=0;i<1400;i++){ const t=Math.random()*6.28, f=Math.acos(Math.random()*.95); v.push(560*Math.sin(f)*Math.cos(t),560*Math.cos(f),560*Math.sin(f)*Math.sin(t)); }
+  const g=new T.BufferGeometry(); g.setAttribute('position',new T.Float32BufferAttribute(v,3)); return new T.Points(g,new T.PointsMaterial({color:0xd8d0ff,size:1.6,sizeAttenuation:false})); })(); S.add(stars);
+const pm=new T.PMREMGenerator(R);
+function envFor(night){ const sc=new T.Scene(); const m=skyM.clone(); m.uniforms.top.value=night?new T.Color(0x05040c):new T.Color(0x3d72c4); m.uniforms.hor.value=night?new T.Color(0x1a1530):new T.Color(0xcfe0f2);
+  sc.add(new T.Mesh(new T.SphereGeometry(50,32,16),m));
+  if(night) for(let i=0;i<10;i++){ const b=new T.Mesh(new T.SphereGeometry(1.4,8,6),new T.MeshBasicMaterial({color:0xffc070})); const a=i/10*6.28; b.position.set(Math.cos(a)*30,6,Math.sin(a)*30); sc.add(b); }
+  return pm.fromScene(sc,.02).texture; }
+const ENV={day:envFor(false),night:envFor(true)};
+function apply(){ const night=ST.time==='night', wet=ST.wet==='wet', glow=ST.glow==='on';
+  skyM.uniforms.top.value.set(night?0x05040c:0x3d72c4); skyM.uniforms.hor.value.set(night?0x1a1530:0xcfe0f2); stars.visible=night;
+  S.fog=new T.Fog(night?0x0b0918:0xbfd3ea,night?35:80,night?120:260);
+  hemi.color.set(night?0x7c86c8:0xdfeaff); hemi.groundColor.set(night?0x141018:0x4a4430); hemi.intensity=night?.32:1.1;
+  sun.color.set(night?0x9fb0ff:0xfff1dc); sun.intensity=night?.28:2.3;
+  S.environment=ENV[night?'night':'day'];
+  Object.values(MAT).forEach(m=>{ if(m.isMeshStandardMaterial&&m!==MAT.glass) m.envMapIntensity=night?.55:.8; });
+  /* wet: darker, glassier asphalt + sidewalks with a sheen */
+  MAT.asphalt.roughness=wet?.32:1; MAT.asphalt.color.setScalar(wet?.62:1); MAT.asphalt.envMapIntensity=wet?(night?1.6:1.2):(night?.4:.6);
+  MAT.slab.roughness=wet?.55:1; MAT.slab.color.setScalar(wet?.78:1);
+  MAT.glass.emissiveIntensity=glow?3.2:0; MAT.glass.color.set(glow?0xfff2d6:0x8f8a80);
+  lamps.forEach(l=>{ l.pl.intensity=glow?(night?2.6:.6):0; l.halo.visible=glow; l.halo.material.opacity=night?1:.35; });
+  OLD.lamp.color.set(glow?0xffe2a6:0x777066);
+  R.toneMappingExposure=night?1.1:1.0; }
+
+/* ---------- camera: orbit or walk ---------- */
+const orb={yaw:.75,pitch:.62,dist:58,tx:0,tz:0}; const me={x:-1.5,z:20,yaw:0,pitch:-.05}; const keys={};
+const VIEWS={over:{yaw:.75,pitch:.62,dist:58,tx:0,tz:0},road:{yaw:.35,pitch:.28,dist:11,tx:2,tz:2},forest:{yaw:-.9,pitch:.32,dist:13,tx:-16,tz:0}};
+function setView(v){ document.body.classList.toggle('walk',v==='walk'); if(VIEWS[v]) Object.assign(orb,VIEWS[v]); if(v==='walk'){ me.x=-1.5; me.z=20; me.yaw=0; me.pitch=-.05; } }
+let drag=null, pinch=null;
+const cv=document.getElementById('c');
+cv.addEventListener('pointerdown',e=>{ drag={x:e.clientX,y:e.clientY,id:e.pointerId}; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointermove',e=>{ if(!drag||drag.id!==e.pointerId) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y; drag.x=e.clientX; drag.y=e.clientY;
+  if(ST.view==='walk'){ me.yaw-=dx*.005; me.pitch=Math.max(-1,Math.min(.7,me.pitch-dy*.004)); } else { orb.yaw-=dx*.006; orb.pitch=Math.max(.05,Math.min(1.45,orb.pitch+dy*.005)); } });
+cv.addEventListener('pointerup',()=>drag=null);
+addEventListener('wheel',e=>{ if(ST.view!=='walk') orb.dist=Math.max(4,Math.min(120,orb.dist*(e.deltaY>0?1.1:1/1.1))); },{passive:true});
+cv.addEventListener('touchmove',e=>{ if(e.touches.length===2){ const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY); if(pinch) orb.dist=Math.max(4,Math.min(120,orb.dist*pinch/d)); pinch=d; drag=null; } },{passive:true});
+cv.addEventListener('touchend',()=>pinch=null);
+addEventListener('keydown',e=>{ keys[e.key.toLowerCase()]=1; }); addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=0; });
+let jx=0,jy=0,jid=null; const joy=document.getElementById('joy'), knob=document.getElementById('knob');
+const jm=e=>{ const r=joy.getBoundingClientRect(); let dx=e.clientX-(r.left+58), dy=e.clientY-(r.top+58); const l=Math.hypot(dx,dy); if(l>44){dx*=44/l;dy*=44/l} jx=dx/44; jy=dy/44; knob.style.transform=`translate(${dx}px,${dy}px)`; };
+joy.addEventListener('pointerdown',e=>{ e.stopPropagation(); jid=e.pointerId; joy.setPointerCapture(jid); jm(e); }); joy.addEventListener('pointermove',e=>{ if(e.pointerId===jid) jm(e); });
+joy.addEventListener('pointerup',()=>{ jid=null; jx=jy=0; knob.style.transform=''; });
+document.querySelectorAll('.seg').forEach(sg=>sg.querySelectorAll('button').forEach(b=>b.onclick=()=>{ const k=sg.dataset.k; ST[k]=b.dataset.v; sg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+  if(k==='ver') layout(); else if(k==='view') setView(ST.view); else apply(); }));
+function size(){ R.setSize(innerWidth,innerHeight,false); cam.aspect=innerWidth/innerHeight; cam.updateProjectionMatrix(); } addEventListener('resize',size);
+let lt=performance.now();
+function frame(t){ const dt=Math.min(.05,(t-lt)/1000); lt=t;
+  if(ST.view==='walk'){ let f=-jy; if(keys.arrowup||keys.w) f=1; if(keys.arrowdown||keys.s) f=-1; if(keys.arrowleft||keys.a) me.yaw+=1.8*dt; if(keys.arrowright||keys.d) me.yaw-=1.8*dt; if(Math.abs(jx)>.15) me.yaw-=jx*1.7*dt;
+    me.x+=-Math.sin(me.yaw)*f*3.4*dt; me.z+=-Math.cos(me.yaw)*f*3.4*dt; me.x=Math.max(-23.5,Math.min(23.5,me.x)); me.z=Math.max(-23.5,Math.min(23.5,me.z));
+    cam.position.set(me.x,1.65,me.z); cam.quaternion.setFromEuler(new T.Euler(me.pitch,me.yaw,0,'YXZ')); }
+  else { const c=Math.cos(orb.pitch); cam.position.set(orb.tx+Math.sin(orb.yaw)*c*orb.dist,Math.sin(orb.pitch)*orb.dist+.5,orb.tz+Math.cos(orb.yaw)*c*orb.dist); cam.lookAt(orb.tx,.5,orb.tz); }
+  R.render(S,cam); requestAnimationFrame(frame); }
+size(); layout(); setView('over'); requestAnimationFrame(frame);
+</script></body></html>

@@ -1,0 +1,36 @@
+// t96 — v53: "After collect: glint goes away" — once collected, the egg's glint fades and it can't be opened again
+const { chromium } = require('playwright'); const path=require('path');
+const A=f=>path.join(__dirname,'..','setassets',f); const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const p=await ctx.newPage();
+  const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=mood',{waitUntil:'domcontentloaded'});
+  await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(1500);
+  const seg=(lab,v)=>p.evaluate(([lab,v])=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent===lab&&[...x.querySelectorAll('button')].some(y=>y.textContent===v)); [...f.querySelectorAll('button')].find(x=>x.textContent===v).click(); },[lab,v]);
+  const btn=t=>p.evaluate(t=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()===t).click(),t);
+  const tab=t=>p.evaluate(t=>{ const b=document.querySelector('#stgRail button[data-tab="'+t+'"]'); if(b.getAttribute('aria-pressed')!=='true') b.click(); },t);
+  await tab('models'); await p.waitForTimeout(300);
+  const [fc]=await Promise.all([p.waitForEvent('filechooser'),btn('drop a model file…')]); await fc.setFiles(A('model.glb'));
+  await p.waitForFunction(()=>window.HEX.scene.children.some(o=>o.userData.isProp),null,{timeout:30000}); await p.waitForTimeout(600);
+  await p.evaluate(()=>{ const s=[...document.querySelectorAll('#stgBody>.stsec')].find(x=>x.style.display!=='none'); const r=s.querySelector('.strow'); if(r&&!r.classList.contains('sel')) r.click(); }); await p.waitForTimeout(400);
+  await seg('Easter egg','on'); await p.waitForTimeout(500);
+  const def=await p.evaluate(()=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent==='After collect'); return f?[...f.querySelectorAll('button')].filter(x=>x.classList.contains('on')||x.getAttribute('aria-pressed')==='true').map(x=>x.textContent).join('|')||f.innerText:null; });
+  check(def&&/goes away/.test(def),'"After collect" is there, set to "glint goes away" ('+def+')');
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); window.HEX.setYaw(0); }); await p.waitForTimeout(600);
+  const [dl]=await Promise.all([p.waitForEvent('download'),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]);
+  const bp=path.join(__dirname,'..','out','t96.html'); await dl.saveAs(bp); await p.close();
+  const q=await b.newPage({viewport:{width:1280,height:800}}); const e2=[]; q.on('pageerror',x=>e2.push(String(x)));
+  await q.goto('http://127.0.0.1:8765/out/t96.html',{waitUntil:'domcontentloaded'}); await q.waitForFunction(()=>window.HEX&&window.HEX.ok); await q.waitForTimeout(3500);
+  const gpos=()=>q.evaluate(()=>{ const E=window.HEXCORE.ROOMEGGS.userData.eggs[0]; const v=E.glint.getWorldPosition(new THREE.Vector3()).project(window.HEX.cam); return {x:(v.x+1)/2*innerWidth,y:(1-v.y)/2*innerHeight,vis:E.glint.visible}; });
+  const open=()=>q.evaluate(()=>{ const e=document.getElementById('hexEgg'); return !!(e&&e.classList.contains('on')); });
+  let gp=await gpos(); check(gp.vis,'published: the glint is there');
+  await q.mouse.click(gp.x,gp.y); await q.waitForTimeout(2200); check(await open(),'tap it: the egg opens');
+  await q.evaluate(()=>[...document.querySelectorAll('#hexEgg button.pl')].find(x=>x.textContent==='collect').click()); await q.waitForTimeout(2500);
+  gp=await gpos(); check(!gp.vis,'after collect: the glint is gone');
+  check(await q.evaluate(([x,y])=>!window.HEXCORE.eggAt(window.HEX, window.HEXCORE.eggHosts(), x, y),[gp.x,gp.y]),'…and it can’t be opened again');
+  await q.mouse.click(gp.x,gp.y); await q.waitForTimeout(1500); check(!(await open()),'tapping there again opens nothing');
+  await q.close();
+  check(errs.length===0&&e2.length===0,'no errors'+((errs[0]||e2[0])?': '+(errs[0]||e2[0]):''));
+  await b.close(); ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(`\n${ok.length}/${ok.length+bad.length}`);
+})();

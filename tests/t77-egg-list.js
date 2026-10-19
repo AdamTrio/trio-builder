@@ -1,0 +1,30 @@
+// t77 — "Easter eggs in this set" finds every egg, even on a hidden duplicate model, and edits it
+const { chromium } = require('playwright'); const path=require('path'); const A=f=>path.join(__dirname,'..','setassets',f);
+const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{ const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+ const p=await (await b.newContext({viewport:{width:1280,height:800}})).newPage(); const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+ await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=event'); await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(1000);
+ const choose=async(fn,f)=>{ const [fc]=await Promise.all([p.waitForEvent('filechooser'),fn()]); await fc.setFiles(f); await p.waitForTimeout(1200); };
+ const btn=t=>p.evaluate(t=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()===t).click(),t);
+ await p.evaluate(()=>[...document.querySelectorAll('#stg .stsec>h4')].find(x=>x.textContent.indexOf('Windows & sets')>=0).click());
+ await btn('+ new set'); await p.waitForTimeout(500);
+ await choose(()=>btn('+ model (.glb)'),A('model.glb')); await choose(()=>btn('+ model (.glb)'),A('model.glb'));
+ // egg on the SECOND copy
+ await p.evaluate(()=>{ const f=[...document.querySelectorAll('#stg .stf')].filter(x=>(x.querySelector('label')||{}).textContent==='· easter egg')[1]; [...f.querySelectorAll('button')].find(x=>x.textContent==='on').click(); });
+ await p.waitForTimeout(600);
+ const heads=await p.evaluate(()=>[...document.querySelectorAll('#stg .stsub')].map(x=>x.textContent).filter(t=>/^\d · /.test(t)));
+ check(heads.length===2&&/^1 · model/.test(heads[0])&&/^2 · model.*egg on/.test(heads[1]),'models numbered, copy 2 tagged "egg on": '+heads.join(' | '));
+ const rows=await p.evaluate(()=>{ const s=[...document.querySelectorAll('#stg .stsec')].find(x=>x.querySelector('h4').textContent.indexOf('Easter eggs in this set')>=0); return [...s.querySelectorAll('.strow')].map(r=>r.textContent); });
+ check(rows.length===1&&/on model 2 · model/.test(rows[0]),'egg list shows where it lives: '+rows[0]);
+ await p.evaluate(()=>{ const s=[...document.querySelectorAll('#stg .stsec')].find(x=>x.querySelector('h4').textContent.indexOf('Easter eggs in this set')>=0); s.querySelector('.strow').click(); });
+ await p.waitForTimeout(500);
+ await p.evaluate(()=>{ const s=[...document.querySelectorAll('#stg .stsec')].find(x=>x.querySelector('h4').textContent.indexOf('Easter eggs in this set')>=0);
+   const t=[...s.querySelectorAll('input')].find(i=>i.placeholder==='a short title'); t.value='Coaster secret'; t.dispatchEvent(new Event('input')); });
+ await p.waitForTimeout(900);
+ const sv=await p.evaluate(()=>new Promise(r=>{ const q=indexedDB.open('hexstage',1); q.onsuccess=()=>{ const t=q.result.transaction('kv','readonly').objectStore('kv').get('auto'); t.onsuccess=()=>r(t.result.sets[0].models[1].egg.blocks[0].text); }; }));
+ check(sv==='Coaster secret','editing from the list changes that egg ('+sv+')');
+ const box=await p.evaluate(()=>window.HEX.scene.children.some(o=>o.type==='BoxHelper'));
+ check(box,'clicking it outlines the model in gold');
+ await p.screenshot({path:'shots/t77-egg-list.png'});
+ check(errs.length===0,'no errors'+(errs[0]?': '+errs[0]:''));
+ await b.close(); ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(`\n${ok.length}/${ok.length+bad.length}`); })();

@@ -1,0 +1,35 @@
+// t106 — v61: the Mood Room gets the sky too — Roof, Sky (night/galaxy/day/own image), Sky glow (the breathing lights) on/off
+const { chromium } = require('playwright'); const path=require('path');
+const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const p=await ctx.newPage();
+  const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=mood',{waitUntil:'domcontentloaded'});
+  await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(2500);
+  const seg=(lab,v)=>p.evaluate(([lab,v])=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent===lab&&[...x.querySelectorAll('button')].some(y=>y.textContent===v)); [...f.querySelectorAll('button')].find(x=>x.textContent===v).click(); },[lab,v]);
+  const tab=t=>p.evaluate(t=>{ const b=document.querySelector('#stgRail button[data-tab="'+t+'"]'); if(b.getAttribute('aria-pressed')!=='true') b.click(); },t);
+  const st=()=>p.evaluate(()=>{ const H=window.HEX, S=H._mood, P=S.skyp; return {ceil:S.ceil.visible, stars:H.stars.visible, aur:H.aurora.visible, mode:P&&P.skyM.uniforms.mode.value, sky:P&&P.sky.visible}; });
+  await tab('room'); await p.waitForTimeout(400);
+  check(await p.evaluate(()=>[...document.querySelectorAll('#stg .stsec h4, #stg .stsec .sth')].some(h=>/^Sky/.test(h.textContent))||[...document.querySelectorAll('#stg .stf label')].some(l=>l.textContent==='Sky')),'Mood Room: a Sky section in the Room tab');
+  let s=await st(); check(s.ceil&&!s.stars&&!s.aur,'roof on: no sky ('+JSON.stringify(s)+')');
+  await seg('Roof','open sky'); await p.waitForTimeout(800);
+  s=await st(); check(!s.ceil&&s.stars&&s.aur,'roof open: the night sky — stars and the breathing lights ('+JSON.stringify(s)+')');
+  await seg('Sky glow','off · just stars'); await p.waitForTimeout(600);
+  s=await st(); check(s.stars&&!s.aur,'Sky glow off: just stars ('+JSON.stringify(s)+')');
+  await seg('Sky glow','on · breathing lights'); await p.waitForTimeout(600);
+  s=await st(); check(s.aur,'Sky glow back on');
+  await seg('Sky','galaxy'); await p.waitForTimeout(800);
+  s=await st(); check(s.mode===1&&!s.stars&&!s.aur,'Sky: galaxy over the Mood Room ('+JSON.stringify(s)+')');
+  await seg('Sky','night'); await seg('Sky glow','off · just stars'); await p.waitForTimeout(600);
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); }); await p.waitForTimeout(400);
+  const [dl]=await Promise.all([p.waitForEvent('download'),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]);
+  await dl.saveAs(path.join(__dirname,'..','out','t106.html')); await p.close();
+  const q=await ctx.newPage(); const e2=[]; q.on('pageerror',x=>e2.push(String(x)));
+  await q.goto('http://127.0.0.1:8765/out/t106.html',{waitUntil:'domcontentloaded'}); await q.waitForFunction(()=>window.HEX&&window.HEX.ok); await q.waitForTimeout(3500);
+  const pub=await q.evaluate(()=>{ const H=window.HEX; return {ceil:H._mood.ceil.visible, stars:H.stars.visible, aur:H.aurora.visible}; });
+  check(!pub.ceil&&pub.stars&&!pub.aur,'published Mood Room: open roof, stars, breathing lights off ('+JSON.stringify(pub)+')');
+  await q.close();
+  check(errs.length===0&&e2.length===0,'no errors'+((errs[0]||e2[0])?': '+(errs[0]||e2[0]):''));
+  await b.close(); ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(`\n${ok.length}/${ok.length+bad.length}`);
+})();

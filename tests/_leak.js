@@ -1,0 +1,11 @@
+const { chromium } = require('playwright'); const path=require('path');
+(async()=>{ const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const q=await b.newPage({viewport:{width:1280,height:800}});
+  await q.goto('http://127.0.0.1:8765/out/t87.html',{waitUntil:'domcontentloaded'}); await q.waitForFunction(()=>window.HEX&&window.HEX.ok); await q.waitForTimeout(5000);
+  let n=0; const lum=async()=>{ const f='/tmp/claude-0/leak'+(n++)+'.png'; await q.screenshot({path:f}); return 0; };
+  const a=await lum();
+  await q.evaluate(()=>window.HEX.scene.traverse(o=>{ if(o.userData.glowLight) o.visible=false; })); await q.evaluate(()=>{ window.HEXCORE.glowTick=()=>{}; });
+  await q.waitForTimeout(500); const bb=await lum();
+  await q.evaluate(()=>{ window.HEX._mood.ups.forEach(u=>u.sp.visible=false); }); await q.waitForTimeout(500); const c=await lum();
+  console.log('with glow light',a.toFixed(1),'without',bb.toFixed(1),'no uplights',c.toFixed(1));
+  await b.close(); })();

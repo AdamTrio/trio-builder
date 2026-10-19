@@ -1,0 +1,13 @@
+const { chromium } = require('playwright');
+(async () => { const b = await chromium.launch({ args: ['--use-gl=swiftshader','--enable-unsafe-swiftshader'] });
+  const p = await b.newPage({ viewport: { width: 1280, height: 800 } }); const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=event'); await p.waitForFunction(()=>window.HEX&&window.HEX.ok); await p.waitForTimeout(3500);
+  const tags = () => p.evaluate(() => { let n=0, v=0; window.HEX.scene.traverse(o=>{ if(o.userData&&o.userData.isWallTag){ n++; if(o.visible) v++; } }); return {n,v}; });
+  const a = await tags();
+  await p.evaluate(()=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()==='hide').click()); await p.waitForTimeout(300);
+  const b1 = await tags();
+  await p.evaluate(()=>document.getElementById('stgBtn').click()); await p.waitForTimeout(300);
+  const c = await tags();
+  await p.keyboard.press('g'); await p.waitForTimeout(300); const d = await tags();
+  console.log('open', JSON.stringify(a), '→ hide', JSON.stringify(b1), '→ stage button', JSON.stringify(c), '→ G', JSON.stringify(d), 'errors', errs.length);
+  await b.close(); })();

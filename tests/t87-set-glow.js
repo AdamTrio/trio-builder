@@ -1,0 +1,62 @@
+// t87 — Mood Room: a model inside a set can glow (stays inside its window), bakes + publishes
+const { chromium } = require('playwright'); const fs=require('fs'), path=require('path');
+const A=f=>path.join(__dirname,'..','setassets',f); const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const lightGap=pg=>pg.evaluate(()=>{ const out=[]; window.HEX.scene.traverse(o=>{ if(o.isLight&&o.userData.glowLight&&o.parent){ const g=o.parent; const bb=new THREE.Box3(); g.traverse(m=>{ if(m.isMesh&&m!==g.userData.shadow) bb.expandByObject(m); }); if(bb.isEmpty()) return; let inSet=false, q=g; while(q){ if(q.userData&&q.userData.isSet&&q.position.y>-50) inSet=true; q=q.parent; } if(inSet) out.push(+o.getWorldPosition(new THREE.Vector3()).distanceTo(bb.getCenter(new THREE.Vector3())).toFixed(2)); } }); return out; });
+
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const p=await ctx.newPage();
+  const errs=[]; p.on('pageerror',e=>errs.push(String(e)));
+  await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=mood',{waitUntil:'domcontentloaded'});
+  await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await p.waitForTimeout(1500);
+  const choose=async(fn,f)=>{ const [fc]=await Promise.all([p.waitForEvent('filechooser'),fn()]); await fc.setFiles(f); await p.waitForTimeout(1200); };
+  const rowBtn=l=>p.evaluate(l=>[...document.querySelectorAll('#stg .strow')].find(x=>(x.querySelector('.nm b')||{}).textContent===l).querySelector('button.add').click(),l);
+  const btn=t=>p.evaluate(t=>[...document.querySelectorAll('#stg button')].find(x=>x.textContent.trim()===t).click(),t);
+  const seg=(lab,v)=>p.evaluate(([lab,v])=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent===lab&&[...x.querySelectorAll('button')].some(y=>y.textContent===v)); [...f.querySelectorAll('button')].find(x=>x.textContent===v).click(); },[lab,v]);
+  await p.evaluate(()=>document.querySelector('#stgRail button[data-tab="windows"]').click()); await p.waitForTimeout(300);
+  await btn('+ cut a window here'); await p.waitForTimeout(600);
+  await btn('+ new set'); await p.waitForTimeout(700);
+  await choose(()=>rowBtn('Background'),A('pano.jpg'));
+  await choose(()=>btn('+ model (.glb)'),A('model.glb')); await p.waitForTimeout(1500);
+  check(await p.evaluate(()=>[...document.querySelectorAll('#stg .stf label')].some(l=>l.textContent==='· glow')),'set editor: each model has a Glow switch');
+  const slide=(lab,v)=>p.evaluate(([lab,v])=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent===lab); const i=f.querySelector('input[type=range]'); i.value=v; i.dispatchEvent(new Event('input')); },[lab,v]);
+  const yOf=()=>p.evaluate(()=>{ const s=window.HEX.scene.children.find(o=>o.userData&&o.userData.isSet&&o.position.y<-50); let y=null, sh=null; if(s) s.traverse(o=>{ if(o.userData&&o.userData.isProp&&o.userData.shadow){ y=o.position.y; sh=o.userData.shadow.visible; } }); return {y,sh}; });
+  check(await p.evaluate(()=>[...document.querySelectorAll('#stg .stf label')].some(l=>l.textContent==='· height')),'set models have a height slider');
+  await slide('· height',1.5);
+  await p.waitForFunction(()=>{ const s=window.HEX.scene.children.find(o=>o.userData&&o.userData.isSet&&o.position.y<-50); let y=null; if(s) s.traverse(o=>{ if(o.userData&&o.userData.isProp&&o.userData.shadow) y=o.position.y; }); return y>1.4; },null,{timeout:30000}).catch(()=>{});
+  const fy=await yOf(); check(fy.y>1.4&&fy.sh===false,'height floats the model, its floor shadow goes ('+JSON.stringify(fy)+')');
+  await seg('· glow','on'); await p.waitForTimeout(1500);
+  await seg('· behaviour','flicker'); await p.waitForTimeout(400);
+  await p.waitForFunction(()=>window.HEXCORE.GLOWS.length>0,null,{timeout:20000}).catch(()=>{});
+  const inEd=await p.evaluate(()=>window.HEXCORE.GLOWS.length);
+  check(inEd>=1,'the model glows in the set editor ('+inEd+')');
+  await btn('done & lock'); await p.waitForTimeout(5000);
+  await p.waitForFunction(()=>{ let g=0; window.HEX.scene.traverse(x=>{ if(x.material&&x.material.userData&&x.material.userData.glow&&x.material.stencilWrite) g++; }); return g>0; },null,{timeout:20000}).catch(()=>{}); console.log(await p.evaluate(()=>JSON.stringify(window.HEX.scene.children.filter(o=>o.userData&&o.userData.isSet).map(o=>{ let n=0,g=0; o.traverse(x=>{ if(x.isMesh) n++; if(x.material&&x.material.userData&&x.material.userData.glow) g++; }); return [o.position.y.toFixed(1),n,g,o.visible]; }))));
+  const room=await p.evaluate(()=>{ const set=window.HEX.scene.children.find(o=>o.userData&&o.userData.isSet&&o.position.y>-50); if(!set) return null;
+    let mats=0, sten=0, light=0, away=false; set.traverse(o=>{ if(o.isMesh&&o.material&&o.material.userData&&o.material.userData.glow){ mats++; if(o.material.stencilWrite) sten++; } if(o.isSpotLight&&o.userData.glowLight){ light++; const a=o.getWorldPosition(new THREE.Vector3()), t=o.target.getWorldPosition(new THREE.Vector3()); away=t.z<a.z; } });
+    return {mats, sten, light, away}; });
+  check(room&&room.mats>0&&room.sten===room.mats&&room.light===1&&room.away,'in the room: set model glows, stays inside the window, its light points into the set ('+JSON.stringify(room)+')');
+  let gp=await lightGap(p); check(gp.length===1&&gp[0]<.5,'the glow light sits on the model ('+gp+')');
+  { const [dj]=await Promise.all([p.waitForEvent('download'),p.evaluate(()=>[...document.querySelectorAll('#stgTop button')].find(x=>x.textContent==='save project file').click())]);
+    const jp=path.join(__dirname,'..','out','t87.hexlook.json'); await dj.saveAs(jp);
+    const r=await b.newPage({viewport:{width:1280,height:800}}); r.on('dialog',d=>d.accept());
+    await r.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html?space=mood',{waitUntil:'domcontentloaded'}); await r.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec')); await r.waitForTimeout(1500);
+    const [fc]=await Promise.all([r.waitForEvent('filechooser'),r.evaluate(()=>[...document.querySelectorAll('button')].find(x=>/^open project/.test(x.textContent.trim())).click())]); await fc.setFiles(jp);
+    await r.waitForFunction(()=>{ let n=0; window.HEX.scene.traverse(o=>{ if(o.isLight&&o.userData.glowLight) n++; }); return n>0; },null,{timeout:90000}).catch(()=>{}); await r.waitForTimeout(3000);
+    gp=await lightGap(r); check(gp.length===1&&gp[0]<.5,'project file re-opened: the glow light still sits on the model, not out in the room ('+gp+')'); await r.close(); }
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); window.HEX.setYaw(0); }); await p.waitForTimeout(900);
+  await p.screenshot({path:'shots/t87-set-glow.png'});
+  const [dl]=await Promise.all([p.waitForEvent('download',{timeout:120000}),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]);
+  const bp=path.join(__dirname,'..','out','t87.html'); await dl.saveAs(bp);
+  const html=fs.readFileSync(bp,'utf8'); const bake=JSON.parse(html.match(/window\.HEXBAKE=(\{.*?\});<\/script>/s)[1].replace(/\\u003c/g,'<'));
+  check(bake.sets[0].models[0].glow&&bake.sets[0].models[0].glow.mode==='flicker','bake carries the set model glow');
+  await p.close();
+  const q=await b.newPage({viewport:{width:1280,height:800}}); const e2=[]; q.on('pageerror',x=>e2.push(String(x)));
+  await q.goto('http://127.0.0.1:8765/out/t87.html',{waitUntil:'domcontentloaded',timeout:120000}); await q.waitForFunction(()=>window.HEX&&window.HEX.ok); await q.waitForTimeout(4000);
+  const pub=await q.evaluate(()=>{ let mats=0, sten=0; window.HEX.scene.traverse(o=>{ if(o.isMesh&&o.material&&o.material.userData&&o.material.userData.glow){ mats++; if(o.material.stencilWrite) sten++; } }); return {mats,sten,n:window.HEXCORE.GLOWS.length}; });
+  { const gq=await lightGap(q); check(gq.length===1&&gq[0]<.5,'published room: the glow light sits on the model ('+gq+')'); }
+  check(pub.mats>0&&pub.sten===pub.mats&&pub.n===1,'published room: the set model glows inside its window ('+JSON.stringify(pub)+')');
+  await q.screenshot({path:'shots/t87-published.png'}); await q.close();
+  check(errs.length===0&&e2.length===0,'no errors'+((errs[0]||e2[0])?': '+(errs[0]||e2[0]):''));
+  await b.close(); ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(`\n${ok.length}/${ok.length+bad.length}`);
+})();

@@ -1,0 +1,36 @@
+// t116 — v68: Sky drift (off / slow / medium) — the sky turns slowly; starts off; Mood Room + Open Space; bakes
+const { chromium } = require('playwright'); const path=require('path');
+const ok=[],bad=[]; const check=(c,m)=>(c?ok:bad).push(m);
+(async()=>{
+  const b=await chromium.launch({args:['--use-gl=swiftshader','--enable-unsafe-swiftshader']});
+  const ctx=await b.newContext({viewport:{width:1280,height:800},acceptDownloads:true}); const errs=[];
+  const open=async q=>{ const p=await ctx.newPage(); p.on('pageerror',e=>errs.push(String(e)));
+    await p.goto('http://127.0.0.1:8765/dist/trio-builder-admin.html'+q,{waitUntil:'domcontentloaded'}); await p.waitForFunction(()=>window.HEX&&window.HEX.ok&&document.querySelector('#stg .stsec'),null,{timeout:90000}); await p.waitForTimeout(2000); return p; };
+  const segOf=p=>(lab,v)=>p.evaluate(([lab,v])=>{ const f=[...document.querySelectorAll('#stg .stf')].find(x=>(x.querySelector('label')||{}).textContent===lab&&[...x.querySelectorAll('button')].some(y=>y.textContent===v)); [...f.querySelectorAll('button')].find(x=>x.textContent===v).click(); },[lab,v]);
+  const rot=p=>p.evaluate(()=>{ const P=window.HEX._mood.skyp; const sw=P.skyM.uniforms.sun.value.clone().applyAxisAngle(new THREE.Vector3(0,1,0),P.sky.rotation.y); return {sky:+P.sky.rotation.y.toFixed(4), stars:+(window.HEX.stars?window.HEX.stars.rotation.y:0).toFixed(4), sunX:+sw.x.toFixed(3), sunZ:+sw.z.toFixed(3)}; });
+  const p=await open('?space=mood'); const seg=segOf(p);
+  await p.evaluate(()=>{ const b=document.querySelector('#stgRail button[data-tab="room"]'); if(b.getAttribute('aria-pressed')!=='true') b.click(); }); await p.waitForTimeout(300);
+  check(await p.evaluate(()=>[...document.querySelectorAll('#stg .stf label')].some(l=>l.textContent==='Sky drift')),'Sky section has "Sky drift"');
+  await seg('Roof','open sky'); await seg('Sky','galaxy'); await p.waitForTimeout(1000);
+  let r0=await rot(p); check(r0.sky===0,'starts off: the sky holds still ('+JSON.stringify(r0)+')');
+  await seg('Sky drift','slow'); await p.waitForTimeout(1500); const r1=await rot(p); await p.waitForTimeout(2500); const r2=await rot(p);
+  check(r2.sky>r1.sky&&r1.sky>0&&r2.stars===r2.sky,'slow: the sky and the stars turn together ('+r1.sky+' → '+r2.sky+')');
+  check(Math.abs(r2.sunX-r0.sunX)<.01&&Math.abs(r2.sunZ-r0.sunZ)<.01,'the sun stays where it is while the sky turns');
+  await seg('Sky drift','medium'); await p.waitForTimeout(1000); const m1=await rot(p); await p.waitForTimeout(2000); const m2=await rot(p);
+  check((m2.sky-m1.sky)>(r2.sky-r1.sky)*.9,'medium turns faster ('+(m2.sky-m1.sky).toFixed(4)+' vs '+(r2.sky-r1.sky).toFixed(4)+')');
+  await seg('Sky drift','off'); await p.waitForTimeout(800); const o=await rot(p); check(o.sky===0,'off: back to still');
+  await seg('Sky drift','slow'); await p.waitForTimeout(400);
+  await p.evaluate(()=>{ document.getElementById('stg').classList.remove('open'); }); await p.waitForTimeout(400);
+  const [dl]=await Promise.all([p.waitForEvent('download',{timeout:120000}),p.evaluate(()=>document.querySelector('#stgTop button.hot:last-child').click())]);
+  await dl.saveAs(path.join(__dirname,'..','out','t116.html')); await p.close();
+  const q=await ctx.newPage(); q.on('pageerror',x=>errs.push('pub: '+x));
+  await q.goto('http://127.0.0.1:8765/out/t116.html',{waitUntil:'domcontentloaded',timeout:120000}); await q.waitForFunction(()=>window.HEX&&window.HEX.ok,null,{timeout:120000}); await q.waitForTimeout(4000);
+  const q1=await rot(q); await q.mouse.move(400,300); await q.mouse.move(600,350,{steps:10}); await q.waitForTimeout(2500); const q2=await rot(q);
+  check(q2.sky>q1.sky,'published room: the sky drifts ('+q1.sky+' → '+q2.sky+')'); await q.close();
+  const os=await open('?space=open'); const s2=segOf(os);
+  check(await os.evaluate(()=>[...document.querySelectorAll('#stg .stf label')].some(l=>l.textContent==='Sky drift')),'Open Space has "Sky drift" too');
+  await s2('Sky drift','medium'); await os.waitForTimeout(1500); const a1=await rot(os); await os.waitForTimeout(2000); const a2=await rot(os);
+  check(a2.sky>a1.sky,'Open Space: the sky drifts');
+  check(!errs.length,'no errors '+errs.join(' | '));
+  ok.forEach(m=>console.log('PASS',m)); bad.forEach(m=>console.log('FAIL',m)); console.log(ok.length+'/'+(ok.length+bad.length)); await b.close();
+})();
